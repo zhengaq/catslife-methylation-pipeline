@@ -1,0 +1,28 @@
+# Site/server path profile — never commit (environment-specific paths)
+config.site.R
+
+# Data & outputs — never commit (governance + size)
+/data/
+/output/
+*.RDat
+*.RData
+*.rds
+
+# ExperimentHub / AnnotationHub caches
+.cache/
+
+# Dev / agent tooling (local state, not part of the pipeline)
+/.agents/
+/.claude/
+/.lavish/
+/skills-lock.json
+
+# R session cruft
+.Rhistory
+.RData
+.Rproj.user/
+Rplots.pdf
+
+# renv library (lockfile, if added, IS tracked)
+renv/library/
+renv/staging/

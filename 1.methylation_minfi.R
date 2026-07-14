@@ -38,7 +38,7 @@ cat("Completed reading in all the array data\n", date(), "\n\n")
 ### Calculate the detection p-values for probes and individuals.
 ### Requires mapping probes to genome/annotation, then filtering.
 ########################################################################################################
-detP <- detectionP(rgSet)
+detP <- minfi::detectionP(rgSet)   ### qualify: ewastools (loaded in stage 3) also exports detectionP and would mask minfi's in a shared session
 save(detP, file = F_DETP)
 str(detP)
 cat("completed detP calculations\ndetP dimensions:\n")

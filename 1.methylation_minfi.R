@@ -23,7 +23,7 @@ targets <- load_targets()
 ### 1. Read methylation data  (IDATs named in the sample sheet)
 ########################################################################################################
 rgSet <- load_raw_rgSet()
-save(rgSet, file = F_RAW)
+if (SAVE_INTERMEDIATES) save(rgSet, file = F_RAW)
 
 ### Information on the rgSet
 pd <- pData(rgSet)
@@ -38,8 +38,8 @@ cat("Completed reading in all the array data\n", date(), "\n\n")
 ### Calculate the detection p-values for probes and individuals.
 ### Requires mapping probes to genome/annotation, then filtering.
 ########################################################################################################
-detP <- minfi::detectionP(rgSet)   ### qualify: ewastools (loaded in stage 3) also exports detectionP and would mask minfi's in a shared session
-save(detP, file = F_DETP)
+detP <- detectionP_chunked(rgSet)   ### chunked by sample to cap peak memory (see config.R)
+if (SAVE_INTERMEDIATES) save(detP, file = F_DETP)
 str(detP)
 cat("completed detP calculations\ndetP dimensions:\n")
 cat(dim(detP), "\n")
@@ -133,7 +133,7 @@ rgSetflt
 cat("are there any probes that are in the remove list still in the filtered rgSetflt?:\n")
 print(any(rownames(rgSetflt) %in% names(rm.probe))) ### Should be FALSE
 
-save(rgSetflt, file = F_RGFLT)
+if (SAVE_INTERMEDIATES) save(rgSetflt, file = F_RGFLT)
 cat("Completed filtering probes and samples on detP\n", date(), "\n\n")
 
 
@@ -142,7 +142,7 @@ cat("Completed filtering probes and samples on detP\n", date(), "\n\n")
 ########################################################################################################
 rgSet.rmsamp <- rgSet[, keep_idx(ncol(rgSet), rm.samp)] ### RGChannelSet with failed samples removed
 MSetNoob <- preprocessNoob(rgSet.rmsamp, verbose = TRUE) ### preprocessNoob needs an RGChannelSet (problem probes removed later)
-save(MSetNoob, file = F_NOOB)
+if (SAVE_INTERMEDIATES) save(MSetNoob, file = F_NOOB)
 MSetNoob
 cat("Completed noob background correction\n", date(), "\n\n")
 
@@ -153,12 +153,11 @@ if (any(rownames(MSetNoob) %in% names(rm.probe))) {
     MSetNoob.flt <- MSetNoob[-rm.probes.MSetNoob, ]
 }
 print(any(rownames(MSetNoob.flt) %in% names(rm.probe))) ### FALSE => failed-probe removal worked
-save(MSetNoob.flt, file = F_NOOBFLT)
-
+if (SAVE_INTERMEDIATES) save(MSetNoob.flt, file = F_NOOBFLT)
 
 ### Normalize using the dasen method in wateRmelon
 dasen.melon <- dasen(MSetNoob.flt)
-save(dasen.melon, file = F_DASEN)
+if (SAVE_INTERMEDIATES) save(dasen.melon, file = F_DASEN)
 dasen.melon
 str(dasen.melon)
 cat("Completed dasen normalization\n", date(), "\n\n")

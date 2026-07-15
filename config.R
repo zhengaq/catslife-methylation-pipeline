@@ -18,6 +18,10 @@ if (file.exists(.site)) { message("config: loading site profile ", .site); sourc
 ## ARRAY_VERSION: "v2" (EPIC v2.0, default) or "v1" (legacy EPIC v1). Env: METHYL_ARRAY_VERSION=v1
 ARRAY_VERSION <- match.arg(Sys.getenv("METHYL_ARRAY_VERSION", "v2"), c("v1", "v2"))
 
+## SAVE_INTERMEDIATES=FALSE skips stage 1's unused .RDat checkpoints (raw/detP/rgSetflt/noob/
+## noobflt/dasen; only dasen_betas.RDat is read downstream) — saves tens of GB. Default TRUE.
+SAVE_INTERMEDIATES <- !(toupper(Sys.getenv("METHYL_SAVE_INTERMEDIATES", "TRUE")) %in% c("FALSE", "0", "NO"))
+
 ## ---- Directories ----------------------------------------------------------
 PROJECT_DIR  <- Sys.getenv("METHYL_PROJECT_DIR",  .root)
 DATA_DIR     <- Sys.getenv("METHYL_DATA_DIR",     file.path(PROJECT_DIR, "data"))
@@ -167,6 +171,21 @@ load_one <- function(path) {
 ## (seq_len(n)[-integer(0)] == integer(0)). Returns the indices to KEEP, so
 ## x[keep_idx(nrow(x), rm), ] works whether or not anything is dropped.
 keep_idx <- function(total, drop) if (length(drop)) seq_len(total)[-drop] else seq_len(total)
+
+## Detection p-values in sample-sized batches (exact: each sample is scored vs its own control
+## background), to cap the ~60GB peak of an all-at-once call at cohort scale. minfi::-qualified
+## since ewastools also exports detectionP. Batch size via METHYL_DETP_CHUNK; chunk >= ncol = one call.
+detectionP_chunked <- function(rgSet, chunk = as.integer(Sys.getenv("METHYL_DETP_CHUNK", "200"))) {
+    n <- ncol(rgSet)
+    if (is.na(chunk) || chunk < 1L || chunk >= n) return(minfi::detectionP(rgSet))
+    idx <- split(seq_len(n), ceiling(seq_len(n) / chunk))
+    cat("detectionP_chunked:", n, "samples in", length(idx), "batch(es) of up to", chunk, "\n")
+    parts <- lapply(seq_along(idx), function(k) {
+        cat("  detectionP batch", k, "/", length(idx), "\n"); utils::flush.console()
+        minfi::detectionP(rgSet[, idx[[k]], drop = FALSE])
+    })
+    do.call(cbind, parts)[, colnames(rgSet), drop = FALSE]   # realign to original column order
+}
 
 ## GenomeStudio sample sheets carry a [Header]/[Manifests]/[Data] preamble; the table
 ## starts after "[Data]". A flat sheet with no marker parses from the top (skip=0).

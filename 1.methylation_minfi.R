@@ -73,6 +73,7 @@ rm.probe <- which(!keep.probe)
 if (length(rm.probe) > 0) {
     write.table(as.matrix(names(rm.probe), ncol = 1), file.path(ANALYSIS_DIR, "methylation_data_detP.failedprobe.txt"), row.names = F, col.names = T, sep = "\t", quote = F)
 }
+rm(detP); gc()   ### QC drop-sets computed; free detP (~10GB) before the memory-heavy steps
 
 
 pdf(file.path(REPORT_DIR, "minfi_QC.missingness_detP.pdf"), height = 4, width = 8)
@@ -118,6 +119,7 @@ if (ARRAY_VERSION == "v1" && grepl("EPICv2", resolved.array))
          "' — the IDATs look like EPIC v2; set METHYL_ARRAY_VERSION=v2.")
 
 grgSet.ns <- dropLociWithSnps(grgSet)  ### DROPPING SITES ON SNPS
+rm(grgSet); gc()   ### mapToGenome result consumed
 
 rm.probes.rgSet <- which(rownames(grgSet.ns) %in% names(rm.probe))
 rgSetflt <- grgSet.ns[keep_idx(nrow(grgSet.ns), rm.probes.rgSet), keep_idx(ncol(grgSet.ns), rm.samp)]
@@ -128,12 +130,14 @@ print(all(colnames(grgSet.ns) == targets$Sample_Group))
 pd      <- pd[keep_idx(nrow(pd), rm.samp), ]
 targets <- targets[keep_idx(nrow(targets), rm.samp), ]
 tis     <- tis[keep_idx(nrow(tis), rm.samp), ]
+rm(grgSet.ns); gc()   ### genome-mapped set consumed (rgSetflt built from it)
 
 rgSetflt
 cat("are there any probes that are in the remove list still in the filtered rgSetflt?:\n")
 print(any(rownames(rgSetflt) %in% names(rm.probe))) ### Should be FALSE
 
 if (SAVE_INTERMEDIATES) save(rgSetflt, file = F_RGFLT)
+rm(rgSetflt); gc()   ### rgSetflt is a checkpoint only — noob runs on the raw rgSet, so free ~20GB here
 cat("Completed filtering probes and samples on detP\n", date(), "\n\n")
 
 
@@ -141,6 +145,7 @@ cat("Completed filtering probes and samples on detP\n", date(), "\n\n")
 ### 3. Background correction ('noob') and normalize with 'dasen' method (from wateRmelon)
 ########################################################################################################
 rgSet.rmsamp <- rgSet[, keep_idx(ncol(rgSet), rm.samp)] ### RGChannelSet with failed samples removed
+rm(rgSet); gc()   ### raw rgSet no longer needed; free ~15GB immediately before preprocessNoob
 MSetNoob <- preprocessNoob(rgSet.rmsamp, verbose = TRUE) ### preprocessNoob needs an RGChannelSet (problem probes removed later)
 if (SAVE_INTERMEDIATES) save(MSetNoob, file = F_NOOB)
 MSetNoob
@@ -154,6 +159,7 @@ if (any(rownames(MSetNoob) %in% names(rm.probe))) {
 }
 print(any(rownames(MSetNoob.flt) %in% names(rm.probe))) ### FALSE => failed-probe removal worked
 if (SAVE_INTERMEDIATES) save(MSetNoob.flt, file = F_NOOBFLT)
+rm(MSetNoob); gc()   ### MSetNoob.flt carries forward; free MSetNoob (~25GB) before dasen
 
 ### Normalize using the dasen method in wateRmelon
 dasen.melon <- dasen(MSetNoob.flt)

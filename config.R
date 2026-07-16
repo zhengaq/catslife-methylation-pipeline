@@ -187,6 +187,34 @@ detectionP_chunked <- function(rgSet, chunk = as.integer(Sys.getenv("METHYL_DETP
     do.call(cbind, parts)[, colnames(rgSet), drop = FALSE]   # realign to original column order
 }
 
+## preprocessNoob in sample-batches. noob (dyeMethod "single", the default) is per-sample, so
+## processing sample-subsets and reassembling is exact. Preallocate the Meth/Unmeth matrices and
+## fill column-blocks in place (no cbind double-hold), so peak stays ~= one full MethylSet (~25GB
+## + the input) instead of the >70GB an all-at-once call needs at ~1600 samples. NOTE: dasen is
+## cross-sample and is NOT chunkable — it still needs the whole matrix. Batch via METHYL_NOOB_CHUNK.
+preprocessNoob_chunked <- function(rgSet, chunk = as.integer(Sys.getenv("METHYL_NOOB_CHUNK", "200"))) {
+    n <- ncol(rgSet)
+    if (is.na(chunk) || chunk < 1L || chunk >= n) return(minfi::preprocessNoob(rgSet, verbose = TRUE))
+    idx <- split(seq_len(n), ceiling(seq_len(n) / chunk))
+    cat("preprocessNoob_chunked:", n, "samples in", length(idx), "batch(es) of up to", chunk, "\n")
+    M <- U <- NULL; pmeth <- ""
+    for (k in seq_along(idx)) {
+        cat("  noob batch", k, "/", length(idx), "\n"); utils::flush.console()
+        ms <- minfi::preprocessNoob(rgSet[, idx[[k]], drop = FALSE])
+        if (is.null(M)) {
+            M <- matrix(NA_real_, nrow(ms), n, dimnames = list(rownames(ms), colnames(rgSet)))
+            U <- M
+            pmeth <- minfi::preprocessMethod(ms)
+        }
+        stopifnot(identical(rownames(ms), rownames(M)))
+        M[, idx[[k]]] <- minfi::getMeth(ms)
+        U[, idx[[k]]] <- minfi::getUnmeth(ms)
+        rm(ms); gc()
+    }
+    minfi::MethylSet(Meth = M, Unmeth = U, annotation = minfi::annotation(rgSet),
+                     preprocessMethod = pmeth)
+}
+
 ## GenomeStudio sample sheets carry a [Header]/[Manifests]/[Data] preamble; the table
 ## starts after "[Data]". A flat sheet with no marker parses from the top (skip=0).
 ## check.names=FALSE preserves headers with spaces ("PI Provided Subject ID").

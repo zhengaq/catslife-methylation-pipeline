@@ -130,7 +130,13 @@ grgSet.ns <- dropLociWithSnps(grgSet)  ### DROPPING SITES ON SNPS
 rm(grgSet); gc()   ### mapToGenome result consumed
 
 rm.probes.rgSet <- which(rownames(grgSet.ns) %in% names(rm.probe))
-rgSetflt <- grgSet.ns[keep_idx(nrow(grgSet.ns), rm.probes.rgSet), keep_idx(ncol(grgSet.ns), rm.samp)]
+if (RESUME && file.exists(F_RGFLT)) {
+    cat("RESUME: loading rgSetflt from", F_RGFLT, "\n"); 
+    rgSetflt <- load_one(F_RGFLT)
+} else {
+    rgSetflt <- grgSet.ns[keep_idx(nrow(grgSet.ns), rm.probes.rgSet), keep_idx(ncol(grgSet.ns), rm.samp)]
+    if (SAVE_INTERMEDIATES) save(rgSetflt, file = F_RGFLT)
+}
 
 ### Also remove failed samples from targets/pd/tis:
 cat("does the order of the samples match between grgSet.ns and pd/tis/targets:\n")
@@ -144,7 +150,6 @@ rgSetflt
 cat("are there any probes that are in the remove list still in the filtered rgSetflt?:\n")
 print(any(rownames(rgSetflt) %in% names(rm.probe))) ### Should be FALSE
 
-if (SAVE_INTERMEDIATES) save(rgSetflt, file = F_RGFLT)
 rm(rgSetflt); gc()   ### rgSetflt is a checkpoint only — noob runs on the raw rgSet, so free ~20GB here
 cat("Completed filtering probes and samples on detP\n", date(), "\n\n")
 

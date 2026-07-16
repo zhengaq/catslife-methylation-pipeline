@@ -7,14 +7,15 @@ config.site.R
 *.RDat
 *.RData
 *.rds
+*.xlsx
+*.sav
+*.txt
 
 # ExperimentHub / AnnotationHub caches
 .cache/
 
 # Dev / agent tooling (local state, not part of the pipeline)
-/.agents/
-/.claude/
-/.lavish/
+
 /skills-lock.json
 
 # R session cruft

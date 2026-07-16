@@ -22,6 +22,11 @@ ARRAY_VERSION <- match.arg(Sys.getenv("METHYL_ARRAY_VERSION", "v2"), c("v1", "v2
 ## noobflt/dasen; only dasen_betas.RDat is read downstream) — saves tens of GB. Default TRUE.
 SAVE_INTERMEDIATES <- !(toupper(Sys.getenv("METHYL_SAVE_INTERMEDIATES", "TRUE")) %in% c("FALSE", "0", "NO"))
 
+## METHYL_RESUME=TRUE makes stage 1 reload the saved raw/detP checkpoints (from a prior
+## SAVE_INTERMEDIATES=TRUE run) instead of re-reading IDATs / recomputing detP — handy for
+## resuming after a crash without repeating the slow read. Default FALSE (fresh run).
+RESUME <- toupper(Sys.getenv("METHYL_RESUME", "FALSE")) %in% c("TRUE", "1", "YES")
+
 ## ---- Directories ----------------------------------------------------------
 PROJECT_DIR  <- Sys.getenv("METHYL_PROJECT_DIR",  .root)
 DATA_DIR     <- Sys.getenv("METHYL_DATA_DIR",     file.path(PROJECT_DIR, "data"))

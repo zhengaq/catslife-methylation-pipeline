@@ -22,8 +22,12 @@ targets <- load_targets()
 ########################################################################################################
 ### 1. Read methylation data  (IDATs named in the sample sheet)
 ########################################################################################################
-rgSet <- load_raw_rgSet()
-if (SAVE_INTERMEDIATES) save(rgSet, file = F_RAW)
+if (RESUME && file.exists(F_RAW)) {
+    cat("RESUME: loading rgSet from", F_RAW, "\n"); rgSet <- load_one(F_RAW)
+} else {
+    rgSet <- load_raw_rgSet()
+    if (SAVE_INTERMEDIATES) save(rgSet, file = F_RAW)
+}
 
 ### Information on the rgSet
 pd <- pData(rgSet)
@@ -38,8 +42,12 @@ cat("Completed reading in all the array data\n", date(), "\n\n")
 ### Calculate the detection p-values for probes and individuals.
 ### Requires mapping probes to genome/annotation, then filtering.
 ########################################################################################################
-detP <- detectionP_chunked(rgSet)   ### chunked by sample to cap peak memory (see config.R)
-if (SAVE_INTERMEDIATES) save(detP, file = F_DETP)
+if (RESUME && file.exists(F_DETP)) {
+    cat("RESUME: loading detP from", F_DETP, "\n"); detP <- load_one(F_DETP)
+} else {
+    detP <- detectionP_chunked(rgSet)   ### chunked by sample to cap peak memory (see config.R)
+    if (SAVE_INTERMEDIATES) save(detP, file = F_DETP)
+}
 str(detP)
 cat("completed detP calculations\ndetP dimensions:\n")
 cat(dim(detP), "\n")
@@ -146,7 +154,8 @@ cat("Completed filtering probes and samples on detP\n", date(), "\n\n")
 ########################################################################################################
 rgSet.rmsamp <- rgSet[, keep_idx(ncol(rgSet), rm.samp)] ### RGChannelSet with failed samples removed
 rm(rgSet); gc()   ### raw rgSet no longer needed; free ~15GB immediately before preprocessNoob
-MSetNoob <- preprocessNoob(rgSet.rmsamp, verbose = TRUE) ### preprocessNoob needs an RGChannelSet (problem probes removed later)
+MSetNoob <- preprocessNoob_chunked(rgSet.rmsamp) ### chunked by sample (config.R) to keep noob under a memory cap; needs a raw RGChannelSet (problem probes removed later)
+rm(rgSet.rmsamp); gc()   ### noob input consumed; free ~15GB before dasen
 if (SAVE_INTERMEDIATES) save(MSetNoob, file = F_NOOB)
 MSetNoob
 cat("Completed noob background correction\n", date(), "\n\n")

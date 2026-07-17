@@ -112,6 +112,17 @@ legend("topright", c("PBMC", "Saliva", "Buffy_Coat"), col = c(rgb(1, 0, 0, .2), 
 dev.off()
 
 
+### Genome-map + array assertion + noob — OR resume straight from the saved MSetNoob.flt checkpoint
+### (F_NOOBFLT), skipping all of the above. Useful to re-run only dasen after a crash there.
+### F_NOOBFLT is the effective resume point; F_NOOB/rgSetflt sit upstream of it and are saved together.
+if (RESUME && file.exists(F_NOOBFLT)) {
+    cat("RESUME: loading MSetNoob.flt from", F_NOOBFLT, "— skipping mapToGenome + noob\n")
+    pd      <- pd[keep_idx(nrow(pd), rm.samp), ]    ### filter to retained samples (the else-branch does this too)
+    targets <- targets[keep_idx(nrow(targets), rm.samp), ]
+    tis     <- tis[keep_idx(nrow(tis), rm.samp), ]
+    MSetNoob.flt <- load_one(F_NOOBFLT)
+    rm(rgSet); gc()
+} else {
 ### Map rgSet to genome to get probeIDs, then subset: remove failed samples, failed probes, and probes on SNPs
 grgSet <- mapToGenome(rgSet)        ##  Mapping to genome. REMOVES a few SNPs
 
@@ -130,13 +141,7 @@ grgSet.ns <- dropLociWithSnps(grgSet)  ### DROPPING SITES ON SNPS
 rm(grgSet); gc()   ### mapToGenome result consumed
 
 rm.probes.rgSet <- which(rownames(grgSet.ns) %in% names(rm.probe))
-if (RESUME && file.exists(F_RGFLT)) {
-    cat("RESUME: loading rgSetflt from", F_RGFLT, "\n"); 
-    rgSetflt <- load_one(F_RGFLT)
-} else {
-    rgSetflt <- grgSet.ns[keep_idx(nrow(grgSet.ns), rm.probes.rgSet), keep_idx(ncol(grgSet.ns), rm.samp)]
-    if (SAVE_INTERMEDIATES) save(rgSetflt, file = F_RGFLT)
-}
+rgSetflt <- grgSet.ns[keep_idx(nrow(grgSet.ns), rm.probes.rgSet), keep_idx(ncol(grgSet.ns), rm.samp)]
 
 ### Also remove failed samples from targets/pd/tis:
 cat("does the order of the samples match between grgSet.ns and pd/tis/targets:\n")
@@ -150,6 +155,7 @@ rgSetflt
 cat("are there any probes that are in the remove list still in the filtered rgSetflt?:\n")
 print(any(rownames(rgSetflt) %in% names(rm.probe))) ### Should be FALSE
 
+if (SAVE_INTERMEDIATES) save(rgSetflt, file = F_RGFLT)
 rm(rgSetflt); gc()   ### rgSetflt is a checkpoint only — noob runs on the raw rgSet, so free ~20GB here
 cat("Completed filtering probes and samples on detP\n", date(), "\n\n")
 
@@ -174,9 +180,13 @@ if (any(rownames(MSetNoob) %in% names(rm.probe))) {
 print(any(rownames(MSetNoob.flt) %in% names(rm.probe))) ### FALSE => failed-probe removal worked
 if (SAVE_INTERMEDIATES) save(MSetNoob.flt, file = F_NOOBFLT)
 rm(MSetNoob); gc()   ### MSetNoob.flt carries forward; free MSetNoob (~25GB) before dasen
+}
 
-### Normalize using the dasen method in wateRmelon
-dasen.melon <- dasen(MSetNoob.flt)
+### Normalize using the dasen method. Default: dasen_stream() — the streaming/low-memory
+### reimplementation in config.R, output identical to wateRmelon::dasen but with a ~40-60GB peak
+### instead of the >100GB stock needs at cohort scale (the delta OOM). METHYL_DASEN_STREAM=FALSE
+### restores stock dasen for A/B verification on small data.
+dasen.melon <- if (DASEN_STREAM) dasen_stream(MSetNoob.flt) else dasen(MSetNoob.flt)
 if (SAVE_INTERMEDIATES) save(dasen.melon, file = F_DASEN)
 dasen.melon
 str(dasen.melon)

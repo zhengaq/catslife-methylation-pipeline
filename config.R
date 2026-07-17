@@ -27,6 +27,12 @@ SAVE_INTERMEDIATES <- !(toupper(Sys.getenv("METHYL_SAVE_INTERMEDIATES", "TRUE"))
 ## resuming after a crash without repeating the slow read. Default FALSE (fresh run).
 RESUME <- toupper(Sys.getenv("METHYL_RESUME", "FALSE")) %in% c("TRUE", "1", "YES")
 
+## DASEN_STREAM=TRUE (default) makes stage 1 normalize with the streaming dasen_stream() below
+## (memory-safe, output identical to wateRmelon::dasen — see its header). METHYL_DASEN_STREAM=FALSE
+## restores stock wateRmelon::dasen, which is cross-sample and needs >100GB at cohort scale — for
+## A/B verification on small data only, never for the full delivery.
+DASEN_STREAM <- !(toupper(Sys.getenv("METHYL_DASEN_STREAM", "TRUE")) %in% c("FALSE", "0", "NO"))
+
 ## ---- Directories ----------------------------------------------------------
 PROJECT_DIR  <- Sys.getenv("METHYL_PROJECT_DIR",  .root)
 DATA_DIR     <- Sys.getenv("METHYL_DATA_DIR",     file.path(PROJECT_DIR, "data"))
@@ -196,7 +202,8 @@ detectionP_chunked <- function(rgSet, chunk = as.integer(Sys.getenv("METHYL_DETP
 ## processing sample-subsets and reassembling is exact. Preallocate the Meth/Unmeth matrices and
 ## fill column-blocks in place (no cbind double-hold), so peak stays ~= one full MethylSet (~25GB
 ## + the input) instead of the >70GB an all-at-once call needs at ~1600 samples. NOTE: dasen is
-## cross-sample and is NOT chunkable — it still needs the whole matrix. Batch via METHYL_NOOB_CHUNK.
+## cross-sample, so it is NOT chunkable by sample the way noob is — but it IS streamable; see
+## dasen_stream() below for the memory-safe equivalent. Batch via METHYL_NOOB_CHUNK.
 preprocessNoob_chunked <- function(rgSet, chunk = as.integer(Sys.getenv("METHYL_NOOB_CHUNK", "200"))) {
     n <- ncol(rgSet)
     if (is.na(chunk) || chunk < 1L || chunk >= n) return(minfi::preprocessNoob(rgSet, verbose = TRUE))
@@ -218,6 +225,78 @@ preprocessNoob_chunked <- function(rgSet, chunk = as.integer(Sys.getenv("METHYL_
     }
     minfi::MethylSet(Meth = M, Unmeth = U, annotation = minfi::annotation(rgSet),
                      preprocessMethod = pmeth)
+}
+
+## Streaming/low-memory dasen — a drop-in for wateRmelon::dasen(MethylSet) whose output is
+## IDENTICAL to stock (verified to machine precision, beta max|diff| ~3e-16; guarded by
+## test/test_dasen_stream.R) but whose peak is ~40-60GB instead of the >100GB stock needs at
+## cohort scale (1642 samples). Stock's memory blows up inside limma::normalizeQuantiles, which
+## holds the input submatrix PLUS a full sorted copy PLUS a full rank matrix. Quantile
+## normalization needs none of those: build the reference by streaming (pass 1), then map each
+## column onto it in place (pass 2). See methylation/troubleshoot/dasen-memory-and-normalization.md.
+##
+## qn_stream: limma::normalizeQuantiles(A, ties=TRUE), streamed. refcols selects which columns
+## define the reference distribution (all columns = cohort average = stock default; a subset =
+## wave-1 anchor). Every column is still mapped onto that reference. The apply step is
+## rank()+approx() interpolation (ties.method="average"), matching limma's ties=TRUE path exactly
+## — naive sorted-position assignment would NOT reproduce stock.
+qn_stream <- function(A, refcols) {
+    n1 <- nrow(A); i <- (0:(n1 - 1)) / (n1 - 1)
+    acc <- numeric(n1)
+    for (j in refcols) acc <- acc + sort.int(A[, j], method = "quick")   # pass 1: reference
+    m <- acc / length(refcols)
+    for (j in seq_len(ncol(A))) {                                        # pass 2: apply in place
+        r <- rank(A[, j])                                               # ties.method="average"
+        A[, j] <- approx(i, m, (r - 1) / (n1 - 1), ties = list("ordered", mean))$y
+    }
+    A
+}
+
+## dfsfit: per-sample background offset applied to Type I probes, plus dfsfit's optional
+## cross-sample Sentrix row/col (roco) lm smoothing of the per-sample offset scalars. dfs2() gives
+## one scalar per sample (streamable); the lm runs over that length-n vector, so it is cheap and
+## kept exactly as stock. roco is extracted the same way stock dasen extracts it; the lm is wrapped
+## in try() so a degenerate position model (e.g. non-Sentrix colnames) skips smoothing rather than
+## erroring — which is what stock effectively does on such data too. wateRmelon:::dfs2 is the same
+## internal stock dasen calls, so the background offset stays byte-for-byte faithful.
+dfsfit_stream <- function(mn, onetwo, roco) {
+    mdf <- vapply(seq_len(ncol(mn)), function(j) wateRmelon:::dfs2(mn[, j], onetwo), numeric(1))
+    if (!is.null(roco)) {
+        scol <- as.numeric(substr(roco, 6, 6)); srow <- as.numeric(substr(roco, 3, 3))
+        fit <- try(lm(mdf ~ srow + scol), silent = TRUE)
+        if (!inherits(fit, "try-error")) mdf <- fit$fitted.values
+        else message("dfsfit_stream: Sentrix position model failed, skipping roco smoothing")
+    }
+    isI <- onetwo == "I"
+    mn[isI, ] <- mn[isI, ] - matrix(rep(mdf, sum(isI)), byrow = TRUE, nrow = sum(isI))
+    mn
+}
+
+## dasen_stream: dfsfit (roco on Meth, none on Unmeth) then quantile-normalize each channel x
+## probe-type. reference = NULL => cohort average (all samples; == stock, and the settled
+## normalization-reference decision for the 2026 delivery). To use a wave-1 anchor instead, pass
+## reference = <the wave-1 columns> (integer indices or a logical mask) — the reference is then
+## estimated from those columns while every sample is still mapped onto it. Returns a minfi
+## MethylSet; downstream getBeta()/getM()/betas() use offset 100 by default, matching dasen's
+## default fudge=100 (this is why the returned MethylSet reproduces stock betas without applying
+## fudge here). wateRmelon:::got is the same design-type accessor stock dasen uses.
+dasen_stream <- function(mset, reference = NULL) {
+    mns <- minfi::getMeth(mset); uns <- minfi::getUnmeth(mset)
+    onetwo <- wateRmelon:::got(mset)
+    if (anyNA(mns) || anyNA(uns))
+        stop("dasen_stream: NA intensities; the streaming fast path assumes complete data")
+    refcols <- if (is.null(reference)) seq_len(ncol(mns))
+               else if (is.logical(reference)) which(reference) else reference
+    roco <- substring(colnames(mns), regexpr("R0[1-9]C0[1-9]", colnames(mns)))
+    mns <- dfsfit_stream(mns, onetwo, roco = roco)
+    uns <- dfsfit_stream(uns, onetwo, roco = NULL); gc()
+    for (t in c("I", "II")) {
+        r <- onetwo == t
+        mns[r, ] <- qn_stream(mns[r, , drop = FALSE], refcols)
+        uns[r, ] <- qn_stream(uns[r, , drop = FALSE], refcols); gc()
+    }
+    minfi::MethylSet(Meth = mns, Unmeth = uns, annotation = minfi::annotation(mset),
+                     preprocessMethod = minfi::preprocessMethod(mset))
 }
 
 ## GenomeStudio sample sheets carry a [Header]/[Manifests]/[Data] preamble; the table

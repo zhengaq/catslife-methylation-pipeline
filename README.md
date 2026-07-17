@@ -9,7 +9,7 @@ v2.0** arrays via `ARRAY_VERSION` in `config.R`.
 
 | # | Script | Does |
 |---|--------|------|
-| 1 | `1.methylation_minfi.R` | Read IDATs (minfi) -> detection-p QC (sample + probe missingness) -> `mapToGenome` + drop SNP loci -> `noob` background correction -> `dasen` normalization (wateRmelon) -> betas / M-values + QC PDFs |
+| 1 | `1.methylation_minfi.R` | Read IDATs (minfi) -> detection-p QC (sample + probe missingness) -> `noob` background correction -> `mapToGenome` + drop SNP loci (applied as a probe filter on the noob output) -> `dasen` normalization (wateRmelon) -> betas / M-values + QC PDFs |
 | 2 | `2.methylation_pca.R` | PCA on M-values (optionally a random CpG subset), colored by tissue |
 | 3 | `3.methylation_adjust.chunked.R` | Estimate cell-type proportions (EpiDISH for blood, BeadSorted/`estimateLC` for saliva) -> residualize betas on cell proportions -> residualize on plate batch. Chunked via `--part`/`--nparts` for parallel (e.g. SLURM array) runs |
 | 4 | `4.methylation_merge.chunked.R` | Merge the per-chunk blood + saliva outputs -> `B.adjusted.platebatches.txt` |

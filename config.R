@@ -18,8 +18,9 @@ if (file.exists(.site)) { message("config: loading site profile ", .site); sourc
 ## ARRAY_VERSION: "v2" (EPIC v2.0, default) or "v1" (legacy EPIC v1). Env: METHYL_ARRAY_VERSION=v1
 ARRAY_VERSION <- match.arg(Sys.getenv("METHYL_ARRAY_VERSION", "v2"), c("v1", "v2"))
 
-## SAVE_INTERMEDIATES=FALSE skips stage 1's unused .RDat checkpoints (raw/detP/rgSetflt/noob/
-## noobflt/dasen; only dasen_betas.RDat is read downstream) — saves tens of GB. Default TRUE.
+## SAVE_INTERMEDIATES=FALSE skips stage 1's optional .RDat checkpoints (raw/detP/noob/dasen and
+## the noobflt resume bundle; only dasen_betas.RDat is read downstream), saving tens of GB.
+## F_NOOBFLT is the resume point: with it saved, METHYL_RESUME=TRUE re-runs only dasen. Default TRUE.
 SAVE_INTERMEDIATES <- !(toupper(Sys.getenv("METHYL_SAVE_INTERMEDIATES", "TRUE")) %in% c("FALSE", "0", "NO"))
 
 ## METHYL_RESUME=TRUE makes stage 1 reload the saved raw/detP checkpoints (from a prior

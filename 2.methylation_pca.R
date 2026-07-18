@@ -25,17 +25,22 @@ cat(all(dasen.IDs[, 1] == IDs[, 1]), "\n")
 
 
 ########################################################################################################
-###  RUN PCA  (optionally on a random subset of CpGs; see PCA_SUBSET in config.R)
+###  RUN PCA  (default: top PCA_NCPG most-variable CpGs; METHYL_PCA_SUBSET=FALSE => all CpGs)
 ########################################################################################################
 if (PCA_SUBSET) {
-    keep.cpg <- sample(rownames(dasen.values$M), PCA_NCPG, replace = FALSE)
-    Mpca <- t(data.frame(dasen.values$M[keep.cpg, ]))
+    ## Most-variable CpGs: leading PCs are driven by the highest-variance probes, so this is the
+    ## standard input for a structure/QC PCA (and memory-safe vs all ~800k). See README.runtime.md.
+    vary     <- matrixStats::rowVars(dasen.values$M)
+    keep.cpg <- rownames(dasen.values$M)[order(vary, decreasing = TRUE)[seq_len(min(PCA_NCPG, nrow(dasen.values$M)))]]
+    Mpca     <- t(dasen.values$M[keep.cpg, ])
 } else {
-    Mpca <- t(data.frame(dasen.values$M))
+    Mpca <- t(dasen.values$M)
 }
-Mpca.s <- apply(Mpca, 2, scale)
-## scaling turns constant CpGs (sd 0) into non-finite columns — drop them so prcomp doesn't choke
-Mpca.s <- Mpca.s[, apply(Mpca.s, 2, function(x) all(is.finite(x))), drop = FALSE]
+rm(dasen.values); gc()   ### loaded betas/M no longer needed once transposed into Mpca
+
+Mpca.s <- scale(Mpca); rm(Mpca); gc()   ### column-wise center/scale in C; apply(, 2, scale) OOMs at cohort scale
+## scaling turns constant CpGs (sd 0) into non-finite columns; drop them so prcomp doesn't choke
+Mpca.s <- Mpca.s[, colSums(!is.finite(Mpca.s)) == 0, drop = FALSE]
 
 sel    <- which(IDs[, 'DNA_Source'] %in% c("Buffy_Coat", "PBMC", "Saliva"))
 Mpca   <- Mpca.s[sel, , drop = FALSE]

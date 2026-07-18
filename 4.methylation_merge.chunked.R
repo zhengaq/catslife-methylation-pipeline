@@ -1,12 +1,14 @@
 #!/usr/bin/env Rscript
 ### Merge the per-chunk batch-adjusted blood + saliva outputs from stage 3 into
 ### one matrix (rows = CpGs, cols = samples) -> output/B.adjusted.platebatches.txt
+### Streamed chunk-by-chunk (fwrite append), so the full cohort matrix is never held in memory.
 source("config.R")
 suppressMessages(library(data.table))
 
-nchunks <- NPARTS
+nchunks  <- NPARTS
+out      <- file.path(ANALYSIS_DIR, "B.adjusted.platebatches.txt")
+ref_cols <- NULL
 
-d <- NULL
 for (chunk in 1:nchunks) {
     ds <- fread(file.path(REPORT_DIR, paste0("B.adjusted.regression.saliva.", chunk, ".txt")), header = TRUE)
     db <- fread(file.path(REPORT_DIR, paste0("B.adjusted.regression.blood.",  chunk, ".txt")), header = TRUE)
@@ -22,18 +24,18 @@ for (chunk in 1:nchunks) {
         d.tmp <- merge(ds, db)
     }
 
-    if (is.null(d)) {
-        d <- d.tmp
-    } else if (all(colnames(d) == colnames(d.tmp))) {
-        d <- rbind(d, d.tmp)
-    } else {
-        cat("Colnames of d & d.tmp DO NOT MATCH.\nchunk:", chunk, "Exiting now.\n", date(), "\n")
+    ### Every chunk must carry the same columns in the same order (the appended rows rely on it)
+    if (is.null(ref_cols)) {
+        ref_cols <- colnames(d.tmp)
+    } else if (!all(colnames(d.tmp) == ref_cols)) {
+        cat("Colnames of chunk", chunk, "DO NOT MATCH chunk 1. Exiting now.\n", date(), "\n")
         quit(save = 'no')
     }
+
+    ### Header only on the first chunk (append=FALSE also truncates any stale file); append the rest
+    fwrite(d.tmp, out, quote = FALSE, sep = "\t", row.names = FALSE,
+           col.names = (chunk == 1), append = (chunk > 1))
+    rm(ds, db, d.tmp); gc()
     cat("Completed chunk", chunk, "\n")
 }
-cat("Completed merging.\n", date(), "\n")
-
-out <- file.path(ANALYSIS_DIR, "B.adjusted.platebatches.txt")
-fwrite(d, out, quote = FALSE, sep = "\t", row.names = FALSE, col.names = TRUE)
-cat("Wrote", out, "\n")
+cat("Wrote", out, "\n", date(), "\n")

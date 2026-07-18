@@ -89,11 +89,13 @@ info$Sample <- paste0("X", info$Sample); info2 <- info
 ## Published clocks are fixed-weight predictors trained on normalized input, so
 ## they run on stage-1's dasen betas, not the cell/plate-adjusted stage-4 betas.
 dv    <- load_one(F_DASENB)
-Betas <- x_prefix_cols(as.data.frame(dv$b))
+Betas <- dv$b; rm(dv); gc()                    ### the M-values in dv are unused here; free them before the beta copy
+Betas <- x_prefix_cols(as.data.frame(Betas))
 if (!assert_clock_cpg_coverage(Betas))
   stop("population.R: too few clock CpGs in the beta matrix — check ARRAY_VERSION / ",
        "probe-id canonicalization before trusting clock output.")
 merged <- compute_clocks(Betas, info2)
+rm(Betas); gc()   ### Pass 1 betas consumed; free before the rank bootstrap and the Pass 2 adjusted betas
 write.csv(merged, file.path(ANALYSIS_DIR, "mAge_clocks.csv"), row.names = FALSE)
 cat("clocks: wrote mAge_clocks.csv -", ncol(merged), "cols,", nrow(merged), "samples\n")
 

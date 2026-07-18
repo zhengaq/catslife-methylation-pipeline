@@ -63,8 +63,7 @@ blood.samp  <- which(IDs$DNA_Source %in% c("Buffy_Coat", "PBMC"))
 
 b.blood  <- dasen.values$b[, blood.samp]
 b.saliva <- dasen.values$b[, saliva.samp]
-m.blood  <- dasen.values$M[, blood.samp]
-m.saliva <- dasen.values$M[, saliva.samp]
+rm(dasen.values); gc()   ### only the per-tissue beta submatrices are used from here; free the full betas/M list
 
 ### estimate cell proportions
 data(centEpiFibIC.m)
@@ -129,6 +128,7 @@ for (i in tstart:tend) {
     wl(c(test.sites[i], fit$resid + coef(fit)[1]), saliva.resid.file)
 }
 cat("Completed chunk", opt$part, "of", opt$nparts, "of B residualization\n", date(), "\n")
+rm(b.blood, b.saliva, MBmat.blood, MBmat.saliva, cellprop.blood, cellprop.saliva); gc()   ### residualized betas are on disk now; free before the plate-batch pass
 
 
 ########################################################################################################

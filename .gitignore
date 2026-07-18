@@ -12,7 +12,7 @@ config.site.R
 *.xlsx
 *.pdf
 *.png
-*.log 
+
 # ExperimentHub / AnnotationHub caches
 .cache/
 

@@ -65,7 +65,9 @@ SAMPLE_MISSINGNESS <- 0.01  # drop sample if > this fraction of probes undetecte
 PROBE_MISSINGNESS  <- 0.01  # drop probe  if > this fraction of samples undetected
 
 ## ---- Stage 2 (PCA) --------------------------------------------------------
-PCA_SUBSET <- toupper(Sys.getenv("METHYL_PCA_SUBSET", "FALSE")) %in% c("TRUE","1","YES")
+## Default: PCA the top PCA_NCPG most-variable CpGs (standard for a structure/QC PCA;
+## see README.runtime.md). METHYL_PCA_SUBSET=FALSE PCAs all CpGs (heavy at cohort scale).
+PCA_SUBSET <- toupper(Sys.getenv("METHYL_PCA_SUBSET", "TRUE")) %in% c("TRUE","1","YES")
 PCA_NCPG   <- 5000
 
 ## ---- Stage 3/4 (chunking) -------------------------------------------------

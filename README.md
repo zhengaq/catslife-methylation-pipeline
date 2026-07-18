@@ -10,7 +10,7 @@ v2.0** arrays via `ARRAY_VERSION` in `config.R`.
 | # | Script | Does |
 |---|--------|------|
 | 1 | `1.methylation_minfi.R` | Read IDATs (minfi) -> detection-p QC (sample + probe missingness) -> `noob` background correction -> `mapToGenome` + drop SNP loci (applied as a probe filter on the noob output) -> `dasen` normalization (wateRmelon) -> betas / M-values + QC PDFs |
-| 2 | `2.methylation_pca.R` | PCA on M-values (optionally a random CpG subset), colored by tissue |
+| 2 | `2.methylation_pca.R` | PCA on M-values (top most-variable CpGs by default; all CpGs via `METHYL_PCA_SUBSET=FALSE`), colored by tissue |
 | 3 | `3.methylation_adjust.chunked.R` | Estimate cell-type proportions (EpiDISH for blood, BeadSorted/`estimateLC` for saliva) -> residualize betas on cell proportions -> residualize on plate batch. Chunked via `--part`/`--nparts` for parallel (e.g. SLURM array) runs |
 | 4 | `4.methylation_merge.chunked.R` | Merge the per-chunk blood + saliva outputs -> `B.adjusted.platebatches.txt` |
 | 5 | `run_stage5.R` (sources `stage5/`) | ~17 epigenetic clocks via `dnaMethyAge` (a primary pass on stage 1's unadjusted betas, plus a second comparison pass on stage 4's adjusted betas), then descriptive stats and clock-vs-age validation |
@@ -49,7 +49,7 @@ admin `LabAge` (wave 2) or `LabAge1` (wave 1) per row.
    BiocManager::install(version = "3.22", update = FALSE, ask = FALSE)
 
    BiocManager::install(c(
-     "remotes", "optparse", "data.table", "tidyverse",
+     "remotes", "optparse", "data.table", "tidyverse", "matrixStats",
      "corrplot", "haven", "readxl",
      "minfi", "wateRmelon", "EpiDISH", "ExperimentHub",
      "FlowSorted.Blood.EPIC", "BeadSorted.Saliva.EPIC",
@@ -128,3 +128,10 @@ admin `LabAge` (wave 2) or `LabAge1` (wave 1) per row.
   resolve normally but have no age-acceleration value.
 - The array->person crosswalk is `random_id` -> `nidaid` (via the sample list) -> the admin
   person
+- Stage 2 PCA uses the top `PCA_NCPG` (5,000) most-variable CpGs by default
+  (`METHYL_PCA_SUBSET=TRUE`), the standard input for a methylation structure/QC diagnostic:
+  minfi's `mdsPlot()` defaults to the 1,000 most-variable positions (Aryee et al. 2014,
+  *Bioinformatics* 30:1363, doi:10.1093/bioinformatics/btu049) and the Bioconductor methylation
+  workflow runs its sample-relationship MDS on the top most-variable CpGs (Maksimovic et al.
+  2016, *F1000Research* 5:1281, doi:10.12688/f1000research.8839). Set `METHYL_PCA_SUBSET=FALSE`
+  to PCA all CpGs.

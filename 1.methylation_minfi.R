@@ -14,12 +14,20 @@ library("minfi")
 library("wateRmelon")
 
 ########################################################################################################
-### FAST RESUME (re-run only dasen). If the noob checkpoint (F_NOOBFLT) exists, load it and its saved
-### sample metadata and jump straight to dasen: this skips read, detP, QC, mapToGenome,
-### dropLociWithSnps and noob entirely. The checkpoint is a self-contained bundle (MethylSet + the
-### retained-sample pd/tis) written by the full run in the else branch below.
+### RESUME TIERS. dasen.melon can be reached three ways, cheapest-resume first:
+###   (0) F_DASEN   -- the dasen checkpoint: skip everything; only betas/M extraction + save remain.
+###   (1) F_NOOBFLT -- the noob checkpoint: re-run only dasen (skips read/detP/QC/mapToGenome/noob).
+###   (2) fresh     -- read IDATs -> detP QC -> map + drop SNP loci -> noob -> dasen.
+### MSetNoob.flt (the pre-normalization set, needed for the wateRmelon `qual` QC plots) is available
+### in tiers 1/2 but NOT tier 0, so those QC plots are skipped on an F_DASEN resume.
 ########################################################################################################
-if (RESUME && file.exists(F_NOOBFLT)) {
+dasen.melon <- NULL
+
+if (RESUME && file.exists(F_DASEN)) {
+    cat("RESUME: loading dasen.melon from", F_DASEN, "- only betas/M extraction remains\n")
+    dasen.melon  <- load_one(F_DASEN)
+    MSetNoob.flt <- NULL
+} else if (RESUME && file.exists(F_NOOBFLT)) {
     cat("RESUME: loading noob checkpoint from", F_NOOBFLT, "\n")
     ckpt <- load_one(F_NOOBFLT)
     if (!is.list(ckpt) || is.null(ckpt$mset))
@@ -189,31 +197,68 @@ if (RESUME && file.exists(F_NOOBFLT)) {
 }
 
 ########################################################################################################
-### 4. Normalize with dasen. Default: dasen_stream() (streaming/low-memory reimplementation in
-### config.R), output identical to wateRmelon::dasen but with a ~40-60GB peak instead of the >100GB
-### stock needs at cohort scale (the delta OOM). METHYL_DASEN_STREAM=FALSE restores stock dasen.
+### Normalize with dasen (tiers 1/2 only; tier 0 already loaded dasen.melon from F_DASEN). Default:
+### dasen_stream() (streaming/low-memory reimplementation in config.R), output identical to
+### wateRmelon::dasen but with a ~40-60GB peak instead of the >100GB stock needs at cohort scale.
+### F_DASEN is written BEFORE the memory-heavy QC/beta extraction below, so a crash there can resume.
 ########################################################################################################
-dasen.melon <- if (DASEN_STREAM) dasen_stream(MSetNoob.flt) else dasen(MSetNoob.flt)
-if (SAVE_INTERMEDIATES) save(dasen.melon, file = F_DASEN)
-print(dasen.melon)
-cat("Completed dasen normalization\n", date(), "\n\n")
+if (is.null(dasen.melon)) {
+    dasen.melon <- if (DASEN_STREAM) dasen_stream(MSetNoob.flt) else dasen(MSetNoob.flt)
+    if (SAVE_INTERMEDIATES) save(dasen.melon, file = F_DASEN)
+    print(dasen.melon)
+    cat("Completed dasen normalization\n", date(), "\n\n")
+    ### Sample identity must line up between the normalized set and the metadata (fail loud):
+    stopifnot(all(colnames(dasen.melon) == pd$Sample_Group))
+}
 
-### Plot the quality metrics:
-qu <- qual(betas(MSetNoob.flt), betas(dasen.melon)) ### A couple of metrics between normalized & non-normalized betas
-str(qu)
-pdf(file.path(REPORT_DIR, "minfi_QC.wateRmelonQC.pdf"), height = 8, width = 8)
-    par(mfrow = c(2, 2), mar = c(4, 4, 1, 1), mgp = c(1.75, .75, 0))
-    boxplot(qu[, 1] ~ pd$DNA_Source)
-    boxplot(qu[, 2] ~ pd$DNA_Source)
-    plot(qu[, 1], qu[, 2], col = tis$tnumeric, pch = tis$tnumeric); abline(0, 1, col = 1, lty = 3, lwd = 2)
-    legend('bottomright', legend = levels(tis$tissue), col = 1:4, pch = 1:4, bty = 'n', title = 'tissue')
-dev.off()
+########################################################################################################
+### 4. Betas / M-values (the deliverable) + wateRmelon QC. Free the big MethylSets as soon as each is
+### drained so this back half stays well under the memory cap (previously MSetNoob.flt + dasen.melon +
+### several beta matrices were all held at once -- the spike that killed the run after dasen).
+########################################################################################################
+betas.m <- getBeta(dasen.melon)   ### normalized betas: the deliverable AND the dasen side of qual
 
-### Sample identity must line up between the normalized set and the metadata (fail loud):
-stopifnot(all(colnames(dasen.melon) == pd$Sample_Group))
+### wateRmelon `qual` compares the pre-normalization betas against the normalized betas. The
+### pre-normalization betas need MSetNoob.flt, which is absent when resuming from F_DASEN (tier 0),
+### so those QC plots are skipped there. getBeta() == wateRmelon::betas() for a MethylSet (offset 100).
+qc.available <- !is.null(MSetNoob.flt)
+if (qc.available) {
+    b.noob <- getBeta(MSetNoob.flt)   ### pre-normalization betas (qual input only)
+    rm(MSetNoob.flt); gc()            ### drained; free ~2 full matrices before qual
+    qu <- qual(b.noob, betas.m)       ### metrics between non-normalized & normalized betas
+    rm(b.noob); gc()
+    str(qu)
+    pdf(file.path(REPORT_DIR, "minfi_QC.wateRmelonQC.pdf"), height = 8, width = 8)
+        par(mfrow = c(2, 2), mar = c(4, 4, 1, 1), mgp = c(1.75, .75, 0))
+        boxplot(qu[, 1] ~ pd$DNA_Source)
+        boxplot(qu[, 2] ~ pd$DNA_Source)
+        plot(qu[, 1], qu[, 2], col = tis$tnumeric, pch = tis$tnumeric); abline(0, 1, col = 1, lty = 3, lwd = 2)
+        legend('bottomright', legend = levels(tis$tissue), col = 1:4, pch = 1:4, bty = 'n', title = 'tissue')
+    dev.off()
 
-betas.m <- getBeta(dasen.melon)
+    ### Compare normalization by tissue (excluding cell-line controls):
+    rm.qual <- which(!rownames(pd) %in% rownames(qu))
+    pd <- pd[keep_idx(nrow(pd), rm.qual), ]
+    print(all(rownames(pd) == rownames(qu)))
+    ctl.samp  <- which(pd$DNA_Source == "Cell_Line")
+    pd.noctl  <- pd[keep_idx(nrow(pd), ctl.samp), ]
+    qu.noctl  <- qu[keep_idx(nrow(qu), ctl.samp), ]
+    tis.noctl <- as.factor(pd.noctl$DNA_Source)
+    tnumeric  <- as.numeric(tis.noctl)
+    jpeg(file.path(REPORT_DIR, "minfi_QC.wateRmelonQC.byTissue.jpg"), height = 6, width = 6, units = 'in', res = 400)
+        par(mfrow = c(2, 2), mar = c(4, 4, 1, 1), mgp = c(1.75, .75, 0))
+        boxplot(qu.noctl[, 1] ~ pd.noctl$DNA_Source, ylab = "wateRmelon qual Method rmsd", xlab = "Tissue")
+        boxplot(qu.noctl[, 2] ~ pd.noctl$DNA_Source, ylab = "wateRmelon qual Method sdd", xlab = "Tissue")
+        plot(qu.noctl[, 1], qu.noctl[, 2], col = tnumeric, pch = tnumeric, ylab = "wateRmelon qual Method sdd", xlab = "wateRmelon qual Method rmsd"); abline(0, 1, col = 1, lty = 3, lwd = 2)
+        legend('bottomright', legend = unique(pd.noctl$DNA_Source), col = 1:3, pch = 1:3, bty = 'n', title = 'tissue')
+    dev.off()
+} else {
+    cat("RESUME from F_DASEN: skipping wateRmelon QC plots (pre-normalization betas unavailable)\n")
+}
+
 Mvalues <- getM(dasen.melon)
+rm(dasen.melon); gc()   ### betas/M extracted; free the normalized MethylSet before canonicalization
+
 ### Canonicalize EPIC v2 replicate-probe IDs (strip "_TC21"-style suffixes, collapsing to the
 ### bare cg######## id clock lists / cell-type references expect) ONCE, here, so every
 ### downstream reader (stages 3-5) sees canonical ids unconditionally. No-op for v1 data.
@@ -223,22 +268,4 @@ dasen.values <- list()
 dasen.values$b <- betas.m
 dasen.values$M <- Mvalues
 save(dasen.values, file = F_DASENB)
-
-### Compare normalization by tissue (excluding cell-line controls):
-rm.qual <- which(!rownames(pd) %in% rownames(qu))
-pd <- pd[keep_idx(nrow(pd), rm.qual), ]
-print(all(rownames(pd) == rownames(qu)))
-ctl.samp  <- which(pd$DNA_Source == "Cell_Line")
-pd.noctl  <- pd[keep_idx(nrow(pd), ctl.samp), ]
-qu.noctl  <- qu[keep_idx(nrow(qu), ctl.samp), ]
-tis.noctl <- as.factor(pd.noctl$DNA_Source)
-tnumeric  <- as.numeric(tis.noctl)
-jpeg(file.path(REPORT_DIR, "minfi_QC.wateRmelonQC.byTissue.jpg"), height = 6, width = 6, units = 'in', res = 400)
-    par(mfrow = c(2, 2), mar = c(4, 4, 1, 1), mgp = c(1.75, .75, 0))
-    boxplot(qu.noctl[, 1] ~ pd.noctl$DNA_Source, ylab = "wateRmelon qual Method rmsd", xlab = "Tissue")
-    boxplot(qu.noctl[, 2] ~ pd.noctl$DNA_Source, ylab = "wateRmelon qual Method sdd", xlab = "Tissue")
-    plot(qu.noctl[, 1], qu.noctl[, 2], col = tnumeric, pch = tnumeric, ylab = "wateRmelon qual Method sdd", xlab = "wateRmelon qual Method rmsd"); abline(0, 1, col = 1, lty = 3, lwd = 2)
-    legend('bottomright', legend = unique(pd.noctl$DNA_Source), col = 1:3, pch = 1:3, bty = 'n', title = 'tissue')
-dev.off()
-
 cat("Completed analyses\n", date(), "\n\n")

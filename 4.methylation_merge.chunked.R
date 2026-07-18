@@ -11,7 +11,7 @@ for (chunk in 1:nchunks) {
     ds <- fread(file.path(REPORT_DIR, paste0("B.adjusted.regression.saliva.", chunk, ".txt")), header = TRUE)
     db <- fread(file.path(REPORT_DIR, paste0("B.adjusted.regression.blood.",  chunk, ".txt")), header = TRUE)
 
-    ### Defensive: drop any trailing all-NA "V#" column (stage 3 no longer emits one)
+    ### Defensive: drop any trailing all-NA "V#" column
     for (nm in grep("^V[0-9]+$", colnames(ds), value = TRUE)) if (all(is.na(ds[[nm]]))) ds[, (nm) := NULL]
     for (nm in grep("^V[0-9]+$", colnames(db), value = TRUE)) if (all(is.na(db[[nm]]))) db[, (nm) := NULL]
 

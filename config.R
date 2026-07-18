@@ -274,8 +274,8 @@ dfsfit_stream <- function(mn, onetwo, roco) {
 }
 
 ## dasen_stream: dfsfit (roco on Meth, none on Unmeth) then quantile-normalize each channel x
-## probe-type. reference = NULL => cohort average (all samples; == stock, and the settled
-## normalization-reference decision for the 2026 delivery). To use a wave-1 anchor instead, pass
+## probe-type. reference = NULL => cohort average (all samples; == stock default). To use a wave-1
+## anchor instead, pass
 ## reference = <the wave-1 columns> (integer indices or a logical mask) — the reference is then
 ## estimated from those columns while every sample is still mapped onto it. Returns a minfi
 ## MethylSet; downstream getBeta()/getM()/betas() use offset 100 by default, matching dasen's

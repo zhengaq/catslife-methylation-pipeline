@@ -1,5 +1,4 @@
-### Script to run PCA on the dasen-normalized M-values, colored by tissue.
-### Standalone diagnostic — feeds nothing downstream. Paths/params from config.R.
+### PCA on the dasen-normalized M-values, colored by tissue. Standalone diagnostic; feeds nothing downstream.
 cat("Beginning analyses\n", date(), "\n\n")
 source("config.R")
 suppressMessages(library("minfi"))
@@ -9,8 +8,8 @@ suppressMessages(library("minfi"))
 ### Sample annotations
 ########################################################################################################
 targets <- load_targets()
-targets <- targets[, c("Sample_Group", "DNA_Source", "Array")]
-targets$DNA_Source <- canonicalize_dna_source(targets$DNA_Source)  ### canonicalize this independent raw-sheet read too
+targets <- targets[, c("Sample_Group", "DNA_Source")]   ### Array is a minfi pData column, not in the raw sheet
+targets$DNA_Source <- canonicalize_dna_source(targets$DNA_Source)
 
 
 ########################################################################################################

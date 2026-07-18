@@ -3,8 +3,7 @@
 ### also uses https://www.bioconductor.org/packages/release/workflows/vignettes/methylationArrayAnalysis/inst/doc/methylationArrayAnalysis.html
 ### and https://www.rdocumentation.org/packages/minfi/versions/1.18.4
 ###
-### Dependencies come from the R environment set up per the README; this script no
-### longer installs packages. Paths, filenames and QC thresholds come from config.R.
+### Paths, filenames and QC thresholds come from config.R.
 
 cat("Beginning analyses\n", date(), "\n\n")
 
@@ -58,7 +57,7 @@ if (RESUME && file.exists(F_DASEN)) {
 
     ### Information on the rgSet
     pd <- pData(rgSet)
-    pd$DNA_Source <- canonicalize_dna_source(pd$DNA_Source)  ### canonicalize ONCE, here, before anything derives from it
+    pd$DNA_Source <- canonicalize_dna_source(pd$DNA_Source)
     tis <- data.frame(as.factor(pd$DNA_Source), as.numeric(as.factor(pd$DNA_Source))); colnames(tis) <- c("tissue", "tnumeric")
     cat("Completed reading in all the array data\n", date(), "\n\n")
 
@@ -213,8 +212,7 @@ if (is.null(dasen.melon)) {
 
 ########################################################################################################
 ### 4. Betas / M-values (the deliverable) + wateRmelon QC. Free the big MethylSets as soon as each is
-### drained so this back half stays well under the memory cap (previously MSetNoob.flt + dasen.melon +
-### several beta matrices were all held at once -- the spike that killed the run after dasen).
+### drained so this back half stays under the memory cap.
 ########################################################################################################
 betas.m <- getBeta(dasen.melon)   ### normalized betas: the deliverable AND the dasen side of qual
 
@@ -260,8 +258,8 @@ Mvalues <- getM(dasen.melon)
 rm(dasen.melon); gc()   ### betas/M extracted; free the normalized MethylSet before canonicalization
 
 ### Canonicalize EPIC v2 replicate-probe IDs (strip "_TC21"-style suffixes, collapsing to the
-### bare cg######## id clock lists / cell-type references expect) ONCE, here, so every
-### downstream reader (stages 3-5) sees canonical ids unconditionally. No-op for v1 data.
+### bare cg######## id that clock lists / cell-type references expect) so every downstream
+### reader sees canonical ids. No-op for v1 data.
 betas.m <- canonicalize_v2_probe_ids(betas.m)
 Mvalues <- canonicalize_v2_probe_ids(Mvalues)
 dasen.values <- list()

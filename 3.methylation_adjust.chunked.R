@@ -32,10 +32,10 @@ wl <- function(vals, file, append = TRUE) cat(paste(vals, collapse = "\t"), "\n"
 ### Sample annotations
 ########################################################################################################
 targetscsv <- read_sample_sheet(SAMPLE_SHEET)
-targetscsv$DNA_Source <- canonicalize_dna_source(targetscsv$DNA_Source)  ### independent raw-sheet read #1
+targetscsv$DNA_Source <- canonicalize_dna_source(targetscsv$DNA_Source)
 targets    <- load_targets()
-targets    <- targets[, c("Sample_Group", "DNA_Source", "Array")]
-targets$DNA_Source <- canonicalize_dna_source(targets$DNA_Source)        ### independent raw-sheet read #2
+targets    <- targets[, c("Sample_Group", "DNA_Source")]   ### Array is a minfi pData column, not in the raw sheet
+targets$DNA_Source <- canonicalize_dna_source(targets$DNA_Source)
 
 
 ########################################################################################################

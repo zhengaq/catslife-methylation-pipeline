@@ -60,21 +60,31 @@ cat("\nStarting Cell Type Proportion Estimation\n", date(), "\n")
 
 saliva.samp <- which(IDs$DNA_Source == "Saliva")
 blood.samp  <- which(IDs$DNA_Source %in% c("Buffy_Coat", "PBMC"))
+has_blood  <- length(blood.samp)  > 0L
+has_saliva <- length(saliva.samp) > 0L
+if (!has_blood && !has_saliva)
+    stop("stage 3: no blood (Buffy_Coat/PBMC) or Saliva samples in DNA_Source; nothing to adjust")
+cat(sprintf("Tissue tracks present: blood n=%d, saliva n=%d\n", length(blood.samp), length(saliva.samp)))
 
-b.blood  <- dasen.values$b[, blood.samp]
-b.saliva <- dasen.values$b[, saliva.samp]
+b.blood  <- if (has_blood)  dasen.values$b[, blood.samp,  drop = FALSE] else NULL
+b.saliva <- if (has_saliva) dasen.values$b[, saliva.samp, drop = FALSE] else NULL
 rm(dasen.values); gc()   ### only the per-tissue beta submatrices are used from here; free the full betas/M list
 
-### estimate cell proportions
+### estimate cell proportions (only for the tissue tracks actually present)
 data(centEpiFibIC.m)
 data(centDHSbloodDMC.m)
-cellprop.blood  <- epidish(b.blood, as.matrix(centDHSbloodDMC.m), method = "RPC")
-cellprop.saliva <- estimateLC(b.saliva, ref = "salivaEPIC", constrain = TRUE)
-
-cp.b <- cbind(as.character(colnames(b.blood)),  cellprop.blood$estF); colnames(cp.b)[1] <- "Sample_Group"
-cp.s <- cbind(as.character(colnames(b.saliva)), cellprop.saliva);     colnames(cp.s)[1] <- "Sample_Group"
-
-cp.all <- merge(cp.b, cp.s, all = TRUE)
+cp.list <- list()
+if (has_blood) {
+    cellprop.blood <- epidish(b.blood, as.matrix(centDHSbloodDMC.m), method = "RPC")
+    cp.b <- cbind(as.character(colnames(b.blood)), cellprop.blood$estF); colnames(cp.b)[1] <- "Sample_Group"
+    cp.list$blood <- cp.b
+}
+if (has_saliva) {
+    cellprop.saliva <- estimateLC(b.saliva, ref = "salivaEPIC", constrain = TRUE)
+    cp.s <- cbind(as.character(colnames(b.saliva)), cellprop.saliva); colnames(cp.s)[1] <- "Sample_Group"
+    cp.list$saliva <- cp.s
+}
+cp.all <- if (length(cp.list) == 2L) merge(cp.list$blood, cp.list$saliva, all = TRUE) else cp.list[[1]]
 cp.IDs <- merge(cp.all, IDs)
 write.table(cp.IDs, file = CELL_PROPORTIONS_FILE, row.names = F, col.names = T, sep = "\t", quote = F)
 cat("Completed Cell Type Proportion Estimation\n", date(), "\n\n")
@@ -88,13 +98,11 @@ MBmat.blood  <- b.blood
 MBmat.saliva <- b.saliva
 
 cat("\nStarting B-value residualization\n", date(), "\n\n")
-cat("Check if all the rownames (cpg sites) match between blood and saliva:\n")
-if (all(rownames(MBmat.blood) == rownames(MBmat.saliva))) {
-    test.sites <- rownames(MBmat.blood)
-    cat("TRUE\n")
-} else {
-    cat("**** ROWNAMES DO NOT MATCH\nQUITTING NOW", date(), "\n"); quit(save = "no")
+### When both tissues are present their CpG rownames must match (fail loud); test.sites = the shared CpG set
+if (has_blood && has_saliva && !all(rownames(MBmat.blood) == rownames(MBmat.saliva))) {
+    cat("**** ROWNAMES DO NOT MATCH BETWEEN BLOOD AND SALIVA\nQUITTING NOW", date(), "\n"); quit(save = "no")
 }
+test.sites <- rownames(if (has_blood) MBmat.blood else MBmat.saliva)
 
 ### Optionally cap the per-CpG loop for speed (RESID_CPG_LIMIT=0 means all CpGs).
 if (RESID_CPG_LIMIT > 0 && length(test.sites) > RESID_CPG_LIMIT) {
@@ -114,27 +122,37 @@ blood.resid.file  <- file.path(REPORT_DIR, paste0("B.residualized.blood.",  opt$
 saliva.resid.file <- file.path(REPORT_DIR, paste0("B.residualized.saliva.", opt$part, ".txt"))
 
 ### Adjust blood samples using monocytes as the (omitted) reference cell type
-wl(c("CpG", colnames(MBmat.blood)), blood.resid.file, append = FALSE)
-for (i in tstart:tend) {
-    fit <- lm(MBmat.blood[i, ] ~ cellprop.blood$estF[, 'B'] + cellprop.blood$estF[, 'NK'] + cellprop.blood$estF[, 'CD4T'] + cellprop.blood$estF[, 'CD8T'] + cellprop.blood$estF[, 'Eosino'] + cellprop.blood$estF[, 'Neutro'])
-    wl(c(test.sites[i], fit$resid + coef(fit)[1]), blood.resid.file)
+if (has_blood) {
+    wl(c("CpG", colnames(MBmat.blood)), blood.resid.file, append = FALSE)
+    for (i in tstart:tend) {
+        fit <- lm(MBmat.blood[i, ] ~ cellprop.blood$estF[, 'B'] + cellprop.blood$estF[, 'NK'] + cellprop.blood$estF[, 'CD4T'] + cellprop.blood$estF[, 'CD8T'] + cellprop.blood$estF[, 'Eosino'] + cellprop.blood$estF[, 'Neutro'])
+        wl(c(test.sites[i], fit$resid + coef(fit)[1]), blood.resid.file)
+    }
+    cat("Done with blood adjustment\n", date(), "\n")
 }
-cat("Done with blood adjustment. Starting saliva sample adjustment\n", date(), "\n")
 
 ### Adjust saliva samples by epithelial cell proportion:
-wl(c("CpG", colnames(MBmat.saliva)), saliva.resid.file, append = FALSE)
-for (i in tstart:tend) {
-    fit <- lm(MBmat.saliva[i, ] ~ cellprop.saliva$Epithelial.cells)
-    wl(c(test.sites[i], fit$resid + coef(fit)[1]), saliva.resid.file)
+if (has_saliva) {
+    wl(c("CpG", colnames(MBmat.saliva)), saliva.resid.file, append = FALSE)
+    for (i in tstart:tend) {
+        fit <- lm(MBmat.saliva[i, ] ~ cellprop.saliva$Epithelial.cells)
+        wl(c(test.sites[i], fit$resid + coef(fit)[1]), saliva.resid.file)
+    }
+    cat("Done with saliva adjustment\n", date(), "\n")
 }
 cat("Completed chunk", opt$part, "of", opt$nparts, "of B residualization\n", date(), "\n")
-rm(b.blood, b.saliva, MBmat.blood, MBmat.saliva, cellprop.blood, cellprop.saliva); gc()   ### residualized betas are on disk now; free before the plate-batch pass
+rm(list = intersect(c("b.blood", "b.saliva", "MBmat.blood", "MBmat.saliva", "cellprop.blood", "cellprop.saliva"), ls())); gc()   ### residualized betas are on disk now; free before the plate-batch pass
 
 
 ########################################################################################################
 ### Adjust for batches (plate)
 ########################################################################################################
-for (tissue in c("blood", "saliva")) {
+### Drop any stale adjusted file for an absent tissue so stage 4 does not merge it
+for (tissue in c("blood", "saliva")[!c(has_blood, has_saliva)]) {
+    stale <- file.path(REPORT_DIR, paste0("B.adjusted.regression.", tissue, ".", opt$part, ".txt"))
+    if (file.exists(stale)) file.remove(stale)
+}
+for (tissue in c("blood", "saliva")[c(has_blood, has_saliva)]) {
     resid.file <- file.path(REPORT_DIR, paste0("B.residualized.", tissue, ".", opt$part, ".txt"))
     adj.file   <- file.path(REPORT_DIR, paste0("B.adjusted.regression.", tissue, ".", opt$part, ".txt"))
     d <- read.table(resid.file, header = TRUE, check.names = FALSE)

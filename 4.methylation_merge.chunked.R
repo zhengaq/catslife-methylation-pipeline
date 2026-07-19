@@ -10,19 +10,22 @@ out      <- file.path(ANALYSIS_DIR, "B.adjusted.platebatches.txt")
 ref_cols <- NULL
 
 for (chunk in 1:nchunks) {
-    ds <- fread(file.path(REPORT_DIR, paste0("B.adjusted.regression.saliva.", chunk, ".txt")), header = TRUE)
-    db <- fread(file.path(REPORT_DIR, paste0("B.adjusted.regression.blood.",  chunk, ".txt")), header = TRUE)
+    ### Read whichever per-tissue adjusted files stage 3 wrote (a single-tissue wave writes one),
+    ### and merge the present tissues on the shared CpG column.
+    tissue_files <- c(blood  = file.path(REPORT_DIR, paste0("B.adjusted.regression.blood.",  chunk, ".txt")),
+                      saliva = file.path(REPORT_DIR, paste0("B.adjusted.regression.saliva.", chunk, ".txt")))
+    tissue_files <- tissue_files[file.exists(tissue_files)]
+    if (!length(tissue_files))
+        stop("stage 4: no per-tissue adjusted files for chunk ", chunk, " under ", REPORT_DIR)
 
-    ### Defensive: drop any trailing all-NA "V#" column
-    for (nm in grep("^V[0-9]+$", colnames(ds), value = TRUE)) if (all(is.na(ds[[nm]]))) ds[, (nm) := NULL]
-    for (nm in grep("^V[0-9]+$", colnames(db), value = TRUE)) if (all(is.na(db[[nm]]))) db[, (nm) := NULL]
-
-    ### Merge blood + saliva for this chunk on the shared CpG column
-    if (all(ds[[1]] == db[[1]])) {
-        d.tmp <- cbind(db, ds[, -1])
-    } else {
-        d.tmp <- merge(ds, db)
-    }
+    parts <- lapply(tissue_files, function(f) {
+        d <- fread(f, header = TRUE)
+        ### Defensive: drop any trailing all-NA "V#" column
+        for (nm in grep("^V[0-9]+$", colnames(d), value = TRUE)) if (all(is.na(d[[nm]]))) d[, (nm) := NULL]
+        d
+    })
+    ### One tissue -> passthrough; two -> cbind on matching CpG order, else merge
+    d.tmp <- Reduce(function(x, y) if (all(x[[1]] == y[[1]])) cbind(x, y[, -1]) else merge(x, y), parts)
 
     ### Every chunk must carry the same columns in the same order (the appended rows rely on it)
     if (is.null(ref_cols)) {
@@ -35,7 +38,7 @@ for (chunk in 1:nchunks) {
     ### Header only on the first chunk (append=FALSE also truncates any stale file); append the rest
     fwrite(d.tmp, out, quote = FALSE, sep = "\t", row.names = FALSE,
            col.names = (chunk == 1), append = (chunk > 1))
-    rm(ds, db, d.tmp); gc()
+    rm(parts, d.tmp); gc()
     cat("Completed chunk", chunk, "\n")
 }
 cat("Wrote", out, "\n", date(), "\n")

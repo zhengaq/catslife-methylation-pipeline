@@ -51,10 +51,16 @@ if (file.exists(PROBLEM_HISTORY_FILE)) {
     }
 }
 
-## ---- 4. IBD: flag (don't drop) likely cross-wave longitudinal resamples -------
-## DUPLICATED=Yes & EXPECTED=No = a genetic duplicate not in DUPS_FILE: the same
-## participant re-sampled at a later wave. Members sharing a wave-stripped base get a
-## shared LongitudinalGroupID; a base-mismatched pair is warned, not auto-linked.
+## ---- Person table (read once; used by the IBD MZ-check and the crosswalk below) -
+person <- read_sav(CLEAN_ID_FILE) %>%
+    mutate(aid = as.integer(aid), random_id = as.integer(random_id)) %>%
+    filter(!is.na(random_id))                       # only sampled persons carry a random_id
+
+## ---- 4. IBD: flag (don't drop) cross-wave resamples and unexpected duplicates --
+## DUPLICATED=Yes & EXPECTED=No = a genetic duplicate not in DUPS_FILE. classify_ibd_pair()
+## (config.R) splits these against the person table: "cross_wave" = one participant resampled
+## across waves (shared LongitudinalGroupID); "mz" = an MZ co-twin pair (same pfamid, ZygGroup=1,
+## identical by design) which is expected; "unexpected" = a likely swap/mislabel, warned for review.
 long_group <- tibble(Subject_ID = character(), LongitudinalGroupID = character())
 if (file.exists(IBD_FILE)) {
     id_map <- select(sheet, Sample_ID, Subject_ID)
@@ -62,13 +68,16 @@ if (file.exists(IBD_FILE)) {
         filter(DUPLICATED == "Yes", EXPECTED == "No") %>%
         left_join(id_map, by = c("IID1" = "Sample_ID")) %>% rename(s1 = Subject_ID) %>%
         left_join(id_map, by = c("IID2" = "Sample_ID")) %>% rename(s2 = Subject_ID) %>%
-        filter(!is.na(s1), !is.na(s2))
-    pairs <- filter(ibd, strip_wave_suffix(s1) == strip_wave_suffix(s2))
-    pwalk(pairs, function(s1, s2, PI_HAT, ...) cat("build_phenotype_file: flagged", s1, "<->", s2,
-        "as a likely cross-wave resample (PI_HAT=", PI_HAT, ")\n"))
-    pwalk(filter(ibd, strip_wave_suffix(s1) != strip_wave_suffix(s2)),
-          function(s1, s2, ...) cat("build_phenotype_file: WARNING - unexpected duplicate", s1, "<->", s2,
-              "does NOT share a wave-suffix pattern - needs manual review\n"))
+        filter(!is.na(s1), !is.na(s2)) %>%
+        mutate(pair_class = classify_ibd_pair(s1, s2, person))
+    pwalk(filter(ibd, pair_class == "cross_wave"), function(s1, s2, PI_HAT, ...)
+        cat("build_phenotype_file: flagged", s1, "<->", s2, "as a likely cross-wave resample (PI_HAT=", PI_HAT, ")\n"))
+    pwalk(filter(ibd, pair_class == "mz"), function(s1, s2, PI_HAT, ...)
+        cat("build_phenotype_file: flagged", s1, "<->", s2, "as an expected MZ co-twin pair (same pfamid, ZygGroup=1, PI_HAT=", PI_HAT, ")\n"))
+    pwalk(filter(ibd, pair_class == "unexpected"), function(s1, s2, ...)
+        cat("build_phenotype_file: WARNING - unexpected duplicate", s1, "<->", s2,
+            "is neither a cross-wave resample nor an MZ co-twin pair - needs manual review\n"))
+    pairs <- filter(ibd, pair_class == "cross_wave")
     long_group <- bind_rows(
         transmute(pairs, Subject_ID = s1, LongitudinalGroupID = strip_wave_suffix(s1)),
         transmute(pairs, Subject_ID = s2, LongitudinalGroupID = strip_wave_suffix(s1))) %>%
@@ -80,9 +89,6 @@ sheet <- left_join(sheet, long_group, by = "Subject_ID")
 ## The load-bearing join: subject_base_id() -> the array-facing random_id (and
 ## subject_wave() -> the wave); the person table carries random_id, so this single join
 ## reaches identity (aid), family (pfamid), sex (nsex) and the wave-2 age.
-person <- read_sav(CLEAN_ID_FILE) %>%
-    mutate(aid = as.integer(aid), random_id = as.integer(random_id)) %>%
-    filter(!is.na(random_id))                       # only sampled persons carry a random_id
 bridge <- sheet %>%
     mutate(random_id = subject_base_id(Subject_ID), Wave = subject_wave(Subject_ID)) %>%
     left_join(select(person, random_id, aid, pfamid, nsex, age, age_w1, famtype),

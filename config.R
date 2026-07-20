@@ -156,6 +156,20 @@ subject_wave <- function(x) {
     ifelse(w == x, 1L, suppressWarnings(as.integer(w)))
 }
 
+## Classify an IBD-flagged genetic-duplicate pair (DUPLICATED=Yes & EXPECTED=No) against the
+## person table (columns random_id, pfamid, ZygGroup): "cross_wave" = same wave-stripped
+## Subject_ID base (one participant resampled across waves); "mz" = different persons in the
+## same pfamid with ZygGroup==1 (MZ co-twins, genetically identical by design); "unexpected" =
+## anything else (a likely sample swap/mislabel needing manual review). Vectorized over s1/s2.
+classify_ibd_pair <- function(s1, s2, person) {
+    r1 <- match(subject_base_id(s1), person$random_id)
+    r2 <- match(subject_base_id(s2), person$random_id)
+    same_base <- strip_wave_suffix(s1) == strip_wave_suffix(s2)
+    is_mz <- !is.na(r1) & !is.na(r2) & person$pfamid[r1] == person$pfamid[r2] &
+             person$ZygGroup[r1] %in% 1 & person$ZygGroup[r2] %in% 1
+    ifelse(same_base, "cross_wave", ifelse(is_mz, "mz", "unexpected"))
+}
+
 ## EPIC v2 gives some replicate probes an id suffix ("cg#######_TC21"); clock and
 ## cell-type references key on the bare "cg########" id, so strip the suffix. Where
 ## two rows collapse to one bare id, keep the lower-missingness row. No-op for v1.

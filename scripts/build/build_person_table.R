@@ -9,6 +9,7 @@ suppressMessages({ library(dplyr); library(haven); library(readxl) })
 validate_paths("person_table")
 
 admin <- read_sav(ADMIN_FILE)
+if (!"ZygGroup" %in% names(admin)) admin$ZygGroup <- NA_real_   # zygosity index (1=MZ); tolerate admins that lack it
 
 ## Sample list = the array<->person crosswalk; dedupe to one (nidaid, random_id) per person.
 sample_list <- read_excel(SAMPLE_LIST_FILE) %>%
@@ -43,7 +44,8 @@ person <- admin %>%
         white     = case_when(racecat_ORIG == 5 ~ 1, racecat_ORIG %in% c(9, NA) ~ NA_real_, TRUE ~ 0),
         hispanic  = case_when(hispanic_ORIG == "Y" ~ 1, hispanic_ORIG == "N" ~ 0, TRUE ~ NA_real_),
         adopted,
-        famtype
+        famtype,
+        ZygGroup  = as.integer(ZygGroup)   # zygosity index (1=MZ); auto-classifies IBD duplicates
     ) %>%
     ## attach random_id (NA for un-sampled persons — kept so dyads retain full families)
     left_join(sample_list, by = "nidaid", relationship = "many-to-one") %>%

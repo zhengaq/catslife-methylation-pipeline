@@ -12,6 +12,7 @@ config.site.R
 *.xlsx
 *.pdf
 *.png
+*.csv
 
 # Run logs + orchestrator checkpoints (run_stage5_pipeline.sh writes logs/ and logs/.ckpt/)
 /logs/

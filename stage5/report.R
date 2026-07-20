@@ -20,6 +20,22 @@ desc <- m %>% group_by(across(all_of(grp))) %>%
             .groups = "drop")
 write.csv(desc, file.path(TABLES_DIR, "descriptives.csv"), row.names = FALSE)
 
+## ---- Per-clock descriptives: full-sample + per-wave mean/SD ----------------
+if ("Wave" %in% names(ph)) m <- merge(m, unique(ph[, c("Sample", "Wave")]), by = "Sample", all.x = TRUE)
+clock_desc_rows <- function(df, wave_label) do.call(rbind, lapply(clock_cols, function(cl) {
+  v <- df[[cl]]
+  data.frame(clock = cl, wave = wave_label, n = sum(!is.na(v)),
+             mean = round(mean(v, na.rm = TRUE), 3), sd = round(sd(v, na.rm = TRUE), 3))
+}))
+clock_desc <- clock_desc_rows(m, "all")
+if ("Wave" %in% names(m))
+  for (w in sort(unique(stats::na.omit(m$Wave))))
+    clock_desc <- rbind(clock_desc, clock_desc_rows(m[m$Wave %in% w, , drop = FALSE], as.character(w)))
+clock_desc <- clock_desc[order(clock_desc$clock, clock_desc$wave), ]
+write.csv(clock_desc, file.path(TABLES_DIR, "clock_descriptives.csv"), row.names = FALSE)
+cat("report: wrote clock_descriptives.csv -", length(unique(clock_desc$clock)), "clocks x",
+    length(unique(clock_desc$wave)), "strata\n")
+
 ## ---- Clock validity: correlation of each clock with chronological age ------
 ## cor(..., use="complete.obs") ERRORS (not just warns) on zero complete pairs —
 ## e.g. a clock compute_clocks() had to NA-fill entirely. NA that one clock, not

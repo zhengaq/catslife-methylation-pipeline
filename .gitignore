@@ -13,6 +13,10 @@ config.site.R
 *.pdf
 *.png
 
+# Run logs + orchestrator checkpoints (run_stage5_pipeline.sh writes logs/ and logs/.ckpt/)
+/logs/
+*.log
+
 # ExperimentHub / AnnotationHub caches
 .cache/
 

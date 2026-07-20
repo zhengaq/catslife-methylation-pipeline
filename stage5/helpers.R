@@ -79,8 +79,7 @@ icc_oneway <- function(x, g) {
 
 ## Per-clock reliability: ICC(1,1) (primary); test-retest Pearson r + mean
 ## absolute difference over the 2-member groups (member order within a pair is
-## arbitrary for exchangeable aliquots, so r is secondary); and the Bland-Altman
-## repeatability coefficient 2.77 * within-group SD.
+## arbitrary for exchangeable aliquots, so r is secondary).
 dup_reliability_one_clock <- function(d, clock_col, group_col = "DupGroupID") {
   x <- d[[clock_col]]; g <- as.character(d[[group_col]])
   ok <- is.finite(x) & !is.na(g); x <- x[ok]; g <- g[ok]
@@ -88,9 +87,8 @@ dup_reliability_one_clock <- function(d, clock_col, group_col = "DupGroupID") {
   x <- x[g %in% keep]; g <- g[g %in% keep]
   if (!length(x))
     return(data.frame(clock = clock_col, n_groups = 0L, n_samples = 0L, icc = NA_real_,
-                      retest_r = NA_real_, mean_abs_diff = NA_real_, repeatability_coef = NA_real_))
-  k <- length(unique(g)); N <- length(x); gmean <- tapply(x, g, mean)
-  MSW <- if (N > k) sum((x - gmean[g])^2) / (N - k) else NA_real_
+                      retest_r = NA_real_, mean_abs_diff = NA_real_))
+  k <- length(unique(g)); N <- length(x)
   pr <- names(tb)[tb == 2L]                          # order-based diagnostics on exact pairs only
   r <- NA_real_; mad <- NA_real_
   if (length(pr)) {
@@ -100,8 +98,7 @@ dup_reliability_one_clock <- function(d, clock_col, group_col = "DupGroupID") {
     if (length(pr) >= 3L && sd(a) > 0 && sd(b) > 0) r <- suppressWarnings(cor(a, b))
   }
   data.frame(clock = clock_col, n_groups = k, n_samples = N, icc = icc_oneway(x, g),
-             retest_r = r, mean_abs_diff = mad,
-             repeatability_coef = if (is.na(MSW)) NA_real_ else 2.77 * sqrt(MSW))
+             retest_r = r, mean_abs_diff = mad)
 }
 
 ## ---- Wave-1 ∩ wave-2 longitudinal descriptives (longitudinal.R) -----------

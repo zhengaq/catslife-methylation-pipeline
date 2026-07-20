@@ -7,7 +7,7 @@ source("config.R"); source("stage5/helpers.R")
 
 TABLES_DIR <- file.path(ANALYSIS_DIR, "tables"); dir.create(TABLES_DIR, recursive = TRUE, showWarnings = FALSE)
 OUT      <- file.path(TABLES_DIR, "clock_duplicate_reliability.csv")
-REL_COLS <- c("clock", "n_groups", "n_samples", "icc", "retest_r", "mean_abs_diff", "repeatability_coef")
+REL_COLS <- c("clock", "n_groups", "n_samples", "icc", "retest_r", "mean_abs_diff")
 
 m  <- read.csv(file.path(ANALYSIS_DIR, "mAge_clocks.csv"))
 ph <- read.csv(PHENOTYPE_FILE)

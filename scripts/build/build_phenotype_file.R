@@ -164,7 +164,8 @@ if (file.exists(CELL_PROPORTIONS_FILE)) {
 out <- bridge %>% transmute(
     Sample = Sample_Group, Subject_ID, IndividualID, FamilyID, Wave, FamilyType, Zygosity,
     DNA_Source, Age = if_else(Wave == 2, age, age_w1),   # LabAge (wave-2) / LabAge1 (wave-1)
-    Sex, Sex_geno, Sex_flag, DupGroupID, Dup_flag, Sample_Plate,
+    Sex, Sex_geno, Sex_flag, Sex_flag_manual = is_sex_problem(Subject_ID),
+    DupGroupID, Dup_flag, Sample_Plate,
     LongitudinalGroupID = coalesce(LongitudinalGroupID, Subject_ID))
 cell_out <- select(bridge, starts_with("cell_"))
 if (ncol(cell_out)) out <- bind_cols(out, cell_out)

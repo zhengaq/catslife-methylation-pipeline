@@ -15,7 +15,7 @@ clock_cols <- intersect(LME_CLOCKS, names(m))
 ## ---- Descriptives: N / age by tissue x zygosity ---------------------------
 grp <- if ("Zygosity" %in% names(m)) c("DNA_Source", "Zygosity") else "DNA_Source"
 desc <- m %>% group_by(across(all_of(grp))) %>%
-  summarise(n_samples = n(), n_individuals = n_distinct(IndividualID),
+  summarise(n_samples = n(), n_individuals = n_distinct(aid),
             age_mean = round(mean(Age, na.rm = TRUE), 1), age_sd = round(sd(Age, na.rm = TRUE), 1),
             .groups = "drop")
 write.csv(desc, file.path(TABLES_DIR, "descriptives.csv"), row.names = FALSE)
@@ -29,7 +29,7 @@ strat_rows <- function(df, stratum) do.call(rbind, lapply(clock_cols, function(c
 ## "cohort" = one value per individual (repeated samples collapsed to a per-person mean), so
 ## multiply-sampled people are not over-weighted; "all" keeps every sample; "wave*" splits by wave.
 cohort <- do.call(rbind, lapply(clock_cols, function(cl)
-  cbind(clock = cl, stratum = "cohort", desc1(tapply(m[[cl]], m$IndividualID, mean, na.rm = TRUE)))))
+  cbind(clock = cl, stratum = "cohort", desc1(tapply(m[[cl]], m$aid, mean, na.rm = TRUE)))))
 clock_desc <- rbind(cohort, strat_rows(m, "all"))
 if ("Wave" %in% names(m))
   for (w in sort(unique(stats::na.omit(m$Wave))))
@@ -50,8 +50,8 @@ write.csv(validity, file.path(TABLES_DIR, "clock_age_validity.csv"), row.names =
 
 ## ---- Violin plots (one random member per family) --------------------------
 set.seed(123)
-fam1 <- m %>% group_by(FamilyID) %>% slice_sample(n = 1) %>% select(FamilyID, IndividualID) %>% ungroup()
-mf <- m %>% semi_join(fam1, by = c("FamilyID", "IndividualID"))
+fam1 <- m %>% group_by(pfamid) %>% slice_sample(n = 1) %>% select(pfamid, aid) %>% ungroup()
+mf <- m %>% semi_join(fam1, by = c("pfamid", "aid"))
 mf$DNA_Source <- factor(mf$DNA_Source, levels = DNA_SOURCES)
 for (cl in clock_cols) {
   p <- ggplot(mf, aes(x = DNA_Source, y = .data[[cl]], fill = DNA_Source)) +

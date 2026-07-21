@@ -170,6 +170,22 @@ classify_ibd_pair <- function(s1, s2, person) {
     ifelse(same_base, "cross_wave", ifelse(is_mz, "mz", "unexpected"))
 }
 
+## ---- Curated sex-problem exclusion -----------------------------------------
+## Base random_ids of individuals with a manually confirmed sex problem (genotype-vs-report
+## mismatch), matched at the person level so every sample/wave is covered. Override the list via
+## METHYL_SEX_PROBLEM_IDS (comma/space-separated). When EXCLUDE_SEX_PROBLEM is TRUE (default) their
+## epigenetic clocks are NA-filled in stage 5 (the row + ids are kept and flagged).
+SEX_PROBLEM_RANDOM_IDS <- local({
+    v <- Sys.getenv("METHYL_SEX_PROBLEM_IDS", "")
+    if (nzchar(v)) as.integer(strsplit(trimws(v), "[,; ]+")[[1]]) else c(16419L, 2810L, 17285L, 15821L)
+})
+EXCLUDE_SEX_PROBLEM <- !(toupper(Sys.getenv("METHYL_EXCLUDE_SEX_PROBLEM", "TRUE")) %in% c("FALSE", "0", "NO"))
+## TRUE for a Subject_ID whose person (base random_id) is on the curated list (NA-safe).
+is_sex_problem <- function(subject_id) {
+    base <- suppressWarnings(as.integer(strip_wave_suffix(sub("_[0-9]*D$", "", subject_id))))
+    !is.na(base) & base %in% SEX_PROBLEM_RANDOM_IDS
+}
+
 ## EPIC v2 gives some replicate probes an id suffix ("cg#######_TC21"); clock and
 ## cell-type references key on the bare "cg########" id, so strip the suffix. Where
 ## two rows collapse to one bare id, keep the lower-missingness row. No-op for v1.

@@ -85,6 +85,38 @@ info <- Demographics[, intersect(c("Sample", "IndividualID", "Age", "Sex", "Fami
                                  names(Demographics))]
 info$Sample <- paste0("X", info$Sample); info2 <- info
 
+## Output post-processing for a clock table: attach the array-facing random_id + the curated
+## sex-problem flag, apply the exclusion (NA the clock columns for flagged rows when
+## EXCLUDE_SEX_PROBLEM is on; the row + ids are kept), and write with the person-table id names
+## aid/pfamid. The in-memory `merged` keeps IndividualID/FamilyID for the rank bootstrap; only the
+## written CSV is renamed.
+clock_meta <- c("Sample", "Subject_ID", "IndividualID", "FamilyID", "random_id", "Age", "Sex",
+                "DNA_Source", "Sex_flag_manual", "clock_excluded")
+attach_ids_and_exclude <- function(merged, demo) {
+  i <- match(merged$Sample, demo$Sample)
+  merged$Subject_ID      <- demo$Subject_ID[i]
+  merged$random_id       <- subject_base_id(merged$Subject_ID)
+  merged$Sex_flag_manual <- if ("Sex_flag_manual" %in% names(demo)) as.logical(demo$Sex_flag_manual[i])
+                            else is_sex_problem(merged$Subject_ID)
+  merged$clock_excluded  <- EXCLUDE_SEX_PROBLEM & (merged$Sex_flag_manual %in% TRUE)
+  clock_cols <- setdiff(names(merged), clock_meta)
+  if (any(merged$clock_excluded)) merged[merged$clock_excluded, clock_cols] <- NA
+  merged
+}
+write_clocks_csv <- function(merged, fname) {
+  clock_cols <- setdiff(names(merged), clock_meta)
+  out <- data.frame(Sample = merged$Sample, random_id = merged$random_id,
+                    aid = merged$IndividualID, pfamid = merged$FamilyID, Age = merged$Age,
+                    Sex = merged$Sex, DNA_Source = merged$DNA_Source,
+                    Sex_flag_manual = merged$Sex_flag_manual, clock_excluded = merged$clock_excluded,
+                    check.names = FALSE)
+  out <- cbind(out, merged[, clock_cols, drop = FALSE])
+  write.csv(out, file.path(ANALYSIS_DIR, fname), row.names = FALSE)
+  cat("clocks: wrote", fname, "-", nrow(out), "samples,", sum(out$clock_excluded),
+      "excluded (sex problem, clocks NA-ed)\n")
+  invisible(out)
+}
+
 ## ------------------------------------------------------ Pass 1: unadjusted ----
 ## Published clocks are fixed-weight predictors trained on normalized input, so
 ## they run on stage-1's dasen betas, not the cell/plate-adjusted stage-4 betas.
@@ -96,8 +128,8 @@ if (!assert_clock_cpg_coverage(Betas))
        "probe-id canonicalization before trusting clock output.")
 merged <- compute_clocks(Betas, info2)
 rm(Betas); gc()   ### Pass 1 betas consumed; free before the rank bootstrap and the Pass 2 adjusted betas
-write.csv(merged, file.path(ANALYSIS_DIR, "mAge_clocks.csv"), row.names = FALSE)
-cat("clocks: wrote mAge_clocks.csv -", ncol(merged), "cols,", nrow(merged), "samples\n")
+merged <- attach_ids_and_exclude(merged, Demographics)   ### random_id + sex-problem exclusion (in-memory)
+write_clocks_csv(merged, "mAge_clocks.csv")
 
 ## ------------------------------------------ Rank-correlation bootstrap ----
 ## Cross-tissue consistency of each clock: bootstrap the Spearman rank correlation
@@ -127,9 +159,8 @@ if (file.exists(ADJUSTED_BETAS_FILE)) {
   BetasAdj <- x_prefix_cols(BetasAdj)
   if (assert_clock_cpg_coverage(BetasAdj)) {
     mergedAdj <- compute_clocks(BetasAdj, info2)
-    write.csv(mergedAdj, file.path(ANALYSIS_DIR, "mAge_clocks_adjusted.csv"), row.names = FALSE)
-    cat("clocks (adjusted): wrote mAge_clocks_adjusted.csv -", ncol(mergedAdj), "cols,",
-        nrow(mergedAdj), "samples\n")
+    mergedAdj <- attach_ids_and_exclude(mergedAdj, Demographics)
+    write_clocks_csv(mergedAdj, "mAge_clocks_adjusted.csv")
   } else {
     cat("population.R: skipping the adjusted-betas clock pass — insufficient clock-CpG coverage\n")
   }

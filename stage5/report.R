@@ -20,21 +20,24 @@ desc <- m %>% group_by(across(all_of(grp))) %>%
             .groups = "drop")
 write.csv(desc, file.path(TABLES_DIR, "descriptives.csv"), row.names = FALSE)
 
-## ---- Per-clock descriptives: full-sample + per-wave mean/SD ----------------
+## ---- Per-clock descriptives: cohort (one/person) + full-sample + per-wave ---
 if ("Wave" %in% names(ph)) m <- merge(m, unique(ph[, c("Sample", "Wave")]), by = "Sample", all.x = TRUE)
-clock_desc_rows <- function(df, wave_label) do.call(rbind, lapply(clock_cols, function(cl) {
-  v <- df[[cl]]
-  data.frame(clock = cl, wave = wave_label, n = sum(!is.na(v)),
-             mean = round(mean(v, na.rm = TRUE), 3), sd = round(sd(v, na.rm = TRUE), 3))
-}))
-clock_desc <- clock_desc_rows(m, "all")
+desc1 <- function(v) data.frame(n = sum(!is.na(v)), mean = round(mean(v, na.rm = TRUE), 3),
+                                sd = round(sd(v, na.rm = TRUE), 3))
+strat_rows <- function(df, stratum) do.call(rbind, lapply(clock_cols, function(cl)
+  cbind(clock = cl, stratum = stratum, desc1(df[[cl]]))))
+## "cohort" = one value per individual (repeated samples collapsed to a per-person mean), so
+## multiply-sampled people are not over-weighted; "all" keeps every sample; "wave*" splits by wave.
+cohort <- do.call(rbind, lapply(clock_cols, function(cl)
+  cbind(clock = cl, stratum = "cohort", desc1(tapply(m[[cl]], m$IndividualID, mean, na.rm = TRUE)))))
+clock_desc <- rbind(cohort, strat_rows(m, "all"))
 if ("Wave" %in% names(m))
   for (w in sort(unique(stats::na.omit(m$Wave))))
-    clock_desc <- rbind(clock_desc, clock_desc_rows(m[m$Wave %in% w, , drop = FALSE], as.character(w)))
-clock_desc <- clock_desc[order(clock_desc$clock, clock_desc$wave), ]
+    clock_desc <- rbind(clock_desc, strat_rows(m[m$Wave %in% w, , drop = FALSE], paste0("wave", w)))
+clock_desc <- clock_desc[order(clock_desc$clock, clock_desc$stratum), ]
 write.csv(clock_desc, file.path(TABLES_DIR, "clock_descriptives.csv"), row.names = FALSE)
 cat("report: wrote clock_descriptives.csv -", length(unique(clock_desc$clock)), "clocks x",
-    length(unique(clock_desc$wave)), "strata\n")
+    length(unique(clock_desc$stratum)), "strata (cohort/all/wave)\n")
 
 ## ---- Clock validity: correlation of each clock with chronological age ------
 ## cor(..., use="complete.obs") ERRORS (not just warns) on zero complete pairs —

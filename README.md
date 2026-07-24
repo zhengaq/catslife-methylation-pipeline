@@ -14,12 +14,19 @@ v2.0** arrays via `ARRAY_VERSION` in `config.R`.
 | 3 | `3.methylation_adjust.chunked.R` | Estimate cell-type proportions (EpiDISH for blood, BeadSorted/`estimateLC` for saliva) -> residualize betas on cell proportions -> residualize on plate batch. Chunked via `--part`/`--nparts` for parallel (e.g. SLURM array) runs |
 | 4 | `4.methylation_merge.chunked.R` | Merge the per-chunk blood + saliva outputs -> `B.adjusted.platebatches.txt` |
 | 5 | `run_stage5.R` (sources `stage5/`) | ~17 epigenetic clocks via `dnaMethyAge` (a primary pass on stage 1's unadjusted betas, plus a second comparison pass on stage 4's adjusted betas), then descriptive stats and clock-vs-age validation |
+| 6 | `run_stage6.R` (sources `stage6/`) | Sensitivity & validity checks on the stage 1-5 output: clock-vs-age validity recomputed one-per-person / one-per-family, DNAmTL identity, ID resolution + clock-NA propagation, and a sex-chromosome / batch-structure PCA |
 
 Stage 5 needs a person-level phenotype file (age, sex, family). Build it by
 running `scripts/build/build_person_table.R` (merges the individual-admin `.sav` with
 the sample list into the person table `CLEAN_ID_FILE`), then
 `scripts/build/catslife_id_dyads.R` and `scripts/build/build_phenotype_file.R`, before
 `run_stage5.R` (see below).
+
+Stage 6 runs after stage 5 and reads its `mAge_clocks.csv` (and stage 1's betas for the
+PCA check). Each check is independent and guarded, so one whose input is absent is
+skipped rather than aborting the rest. `stage6/validity_clocks.R` writes tables to
+`output/sensitivity/`; `stage6/pca_sex_batch.R` writes `output/reports/PCA_sex_batch.pdf`
+and `pca_sex_batch_summary.csv` (each PC's variance and its ANOVA R² with sex and plate).
 
 ## The ID bridge (array IDs <-> person IDs)
 
@@ -105,6 +112,7 @@ admin `LabAge` (wave 2) or `LabAge1` (wave 1) per row.
    Rscript scripts/build/catslife_id_dyads.R
    Rscript scripts/build/build_phenotype_file.R
    Rscript run_stage5.R
+   Rscript run_stage6.R                             # sensitivity & validity checks
    ```
    `build_phenotype_file.R` fails loud (rather than silently guessing) if any
    non-control sample's `random_id` does not resolve to a person.

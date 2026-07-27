@@ -116,6 +116,11 @@ admin `LabAge` (wave 2) or `LabAge1` (wave 1) per row.
    ```
    `build_phenotype_file.R` fails loud (rather than silently guessing) if any
    non-control sample's `random_id` does not resolve to a person.
+
+   For long or failure-prone runs, `run_stage5_pipeline.sh` (the ID bridge + stage 5)
+   and `run_stage6_pipeline.sh` (stage 6) checkpoint each step to `logs/.ckpt/` and skip
+   completed ones on re-run, so a failure resumes where it stopped
+   (`--status` / `--from <step>` / `--force`; `--help` for detached usage).
 5. Set `METHYL_ARRAY_VERSION=v1` if the raw IDATs are legacy EPIC v1 arrays
    (the default is `v2`).
 

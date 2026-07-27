@@ -59,10 +59,12 @@ na_per <- colSums(!cm)
 allna  <- rowSums(!cm) == length(clocks)
 x2 <- data.frame(clock = clocks, n_NA = as.integer(na_per), pct_NA = round(100 * na_per / n, 2))
 write.csv(x2[order(-x2$n_NA), ], file.path(SENS_DIR, "clock_na.csv"), row.names = FALSE)
-bad <- m[allna, intersect(c("Sample", idcol, famcol, "Age", "Sex"), names(m))]
-## Cross-reference the all-NA rows to stage-1 sample missingness: an all-NA row is
-## expected when the sample was dropped at stage-1 QC (no betas), not a clock failure.
-miss_f <- file.path(REPORT_DIR, "sample_missingness.txt")
+bad <- m[allna, intersect(c("Sample", idcol, famcol, "Age", "Sex", "Sex_flag_manual", "clock_excluded"), names(m))]
+## Two benign reasons a row is all-NA: it was a curated sex exclusion (clock_excluded == TRUE,
+## clocks deliberately NA-ed) or the sample was dropped at stage-1 QC (no betas). Cross-reference
+## to stage-1 sample missingness when that report is present to confirm the QC-drop reason.
+excl_col <- if ("clock_excluded" %in% names(m)) m$clock_excluded[allna] %in% TRUE else rep(FALSE, nrow(bad))
+miss_f   <- file.path(REPORT_DIR, "sample_missingness.txt")
 if (nrow(bad) && file.exists(miss_f)) {
     miss <- read.delim(miss_f, stringsAsFactors = FALSE)
     miss$key <- paste0(miss$Sentrix_ID, "_", miss$Sentrix_Position)
@@ -70,10 +72,11 @@ if (nrow(bad) && file.exists(miss_f)) {
     bad$qc_dropped         <- bad$stage1_missingness > SAMPLE_MISSINGNESS
 }
 write.csv(bad, file.path(SENS_DIR, "allNA_samples.csv"), row.names = FALSE)
-cat(sprintf("clock-NA: %d/%d samples fully complete; %d lose >=1 clock; %d all-NA",
-            sum(rowSums(!cm) == 0), n, sum(rowSums(!cm) >= 1), sum(allna)))
-if (!is.null(bad$qc_dropped)) cat(sprintf(" (%d of which are stage-1 QC drops)", sum(bad$qc_dropped, na.rm = TRUE)))
-cat("\n")
+cat(sprintf("clock-NA: %d/%d samples fully complete; %d lose >=1 clock; %d all-NA (%d sex-excluded",
+            sum(rowSums(!cm) == 0), n, sum(rowSums(!cm) >= 1), sum(allna), sum(excl_col)))
+if (!is.null(bad$qc_dropped))
+    cat(sprintf(", %d stage-1 QC drops", sum(bad$qc_dropped %in% TRUE & !excl_col)))
+cat(")\n")
 
 ## ---- age-validity under one-per-person / one-per-family -----------------
 set.seed(123)

@@ -30,7 +30,10 @@ anno_pkg <- if (ARRAY_VERSION == "v2") {
 }
 if (!requireNamespace(anno_pkg, quietly = TRUE))
     stop("stage6/pca_sex_batch.R: annotation package not installed: ", anno_pkg)
-anno      <- minfi::getAnnotation(getExportedValue(anno_pkg, anno_pkg))
+## attach (not just load) the annotation package: minfi::getAnnotation() -> updateObject()
+## resolves it as "package:<anno_pkg>" on the search list, which only exists after library().
+suppressMessages(library(anno_pkg, character.only = TRUE))
+anno      <- minfi::getAnnotation(get(anno_pkg))
 anno_bare <- sub("_[A-Za-z0-9]+$", "", rownames(anno))
 chr_of    <- setNames(as.character(anno$chr), anno_bare)
 probe_chr <- chr_of[rownames(M)]

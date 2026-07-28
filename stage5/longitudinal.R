@@ -7,12 +7,11 @@
 ### table (not an error). Writes output/tables/clock_wave_overlap.csv.
 source("config.R"); source("stage5/helpers.R")
 
-TABLES_DIR <- file.path(ANALYSIS_DIR, "tables"); dir.create(TABLES_DIR, recursive = TRUE, showWarnings = FALSE)
 OUT      <- file.path(TABLES_DIR, "clock_wave_overlap.csv")
 OUT_COLS <- c("clock", "tissue", "n_pairs", "n_individuals", "retest_r",
               "mean_delta_epi", "sd_delta_epi", "mean_delta_chrono", "epi_per_chrono_year")
 
-m  <- read.csv(file.path(ANALYSIS_DIR, "mAge_clocks.csv"))
+m  <- read.csv(file.path(DERIVED_DIR, "mAge_clocks.csv"))
 ph <- read.csv(PHENOTYPE_FILE)
 clock_cols <- intersect(LME_CLOCKS, names(m))
 

@@ -38,8 +38,19 @@ DASEN_STREAM <- !(toupper(Sys.getenv("METHYL_DASEN_STREAM", "TRUE")) %in% c("FAL
 PROJECT_DIR  <- Sys.getenv("METHYL_PROJECT_DIR",  .root)
 DATA_DIR     <- Sys.getenv("METHYL_DATA_DIR",     file.path(PROJECT_DIR, "data"))
 ANALYSIS_DIR <- Sys.getenv("METHYL_ANALYSIS_DIR", file.path(PROJECT_DIR, "output"))
-REPORT_DIR   <- file.path(ANALYSIS_DIR, "reports")
-dir.create(REPORT_DIR, recursive = TRUE, showWarnings = FALSE)
+## Output sub-trees. Each defaults to ANALYSIS_DIR (the historical flat layout), so a single
+## METHYL_ANALYSIS_DIR still works unchanged; a site profile can point each at its own directory
+## to separate analysis-ready data (derived), regenerable stage 1-4 artifacts (intermediate), and
+## findings (results). REPORT_DIR/TABLES_DIR/SENS_DIR are subfolders of results.
+DERIVED_DIR      <- Sys.getenv("METHYL_DERIVED_DIR",      ANALYSIS_DIR)
+INTERMEDIATE_DIR <- Sys.getenv("METHYL_INTERMEDIATE_DIR", ANALYSIS_DIR)
+RESULTS_DIR      <- Sys.getenv("METHYL_RESULTS_DIR",      ANALYSIS_DIR)
+LOGS_DIR         <- Sys.getenv("METHYL_LOGS_DIR",         ANALYSIS_DIR)  # run logs + checkpoints; see *_pipeline.sh
+REPORT_DIR       <- file.path(RESULTS_DIR, "reports")
+TABLES_DIR       <- file.path(RESULTS_DIR, "tables")
+SENS_DIR         <- file.path(RESULTS_DIR, "sensitivity")
+for (.d in c(DERIVED_DIR, INTERMEDIATE_DIR, REPORT_DIR, TABLES_DIR, SENS_DIR))
+    dir.create(.d, recursive = TRUE, showWarnings = FALSE)
 
 ## ---- Inputs ---------------------------------------------------------------
 ## IDATs live one directory per Sentrix barcode under IDAT_DIR
@@ -51,13 +62,13 @@ SAMPLE_SHEET    <- Sys.getenv("METHYL_SAMPLE_SHEET", file.path(DATA_DIR, "sample
 ID_KEY          <- Sys.getenv("METHYL_ID_KEY",       file.path(DATA_DIR, "SIF.xlsx"))
 
 ## ---- Intermediate outputs -------------------------------------------------
-F_RAW     <- file.path(ANALYSIS_DIR, "methylation_data_raw.RDat")
-F_DETP    <- file.path(ANALYSIS_DIR, "methylation_data_detP.RDat")
-F_RGFLT   <- file.path(ANALYSIS_DIR, "methylation_data_rgSetflt.RDat")
-F_NOOB    <- file.path(ANALYSIS_DIR, "methylation_data_noob.RDat")
-F_NOOBFLT <- file.path(ANALYSIS_DIR, "methylation_data_noobflt.RDat")
-F_DASEN   <- file.path(ANALYSIS_DIR, "methylation_data_dasen.RDat")
-F_DASENB  <- file.path(ANALYSIS_DIR, "dasen_betas.RDat")
+F_RAW     <- file.path(INTERMEDIATE_DIR, "methylation_data_raw.RDat")
+F_DETP    <- file.path(INTERMEDIATE_DIR, "methylation_data_detP.RDat")
+F_RGFLT   <- file.path(INTERMEDIATE_DIR, "methylation_data_rgSetflt.RDat")
+F_NOOB    <- file.path(INTERMEDIATE_DIR, "methylation_data_noob.RDat")
+F_NOOBFLT <- file.path(INTERMEDIATE_DIR, "methylation_data_noobflt.RDat")
+F_DASEN   <- file.path(INTERMEDIATE_DIR, "methylation_data_dasen.RDat")
+F_DASENB  <- file.path(INTERMEDIATE_DIR, "dasen_betas.RDat")
 
 ## ---- QC parameters --------------------------------------------------------
 DETP_THRESHOLD     <- 0.05  # detP < this  => probe call is "detected"
@@ -84,10 +95,10 @@ PHENOTYPE_FILE <- Sys.getenv("METHYL_PHENOTYPE_FILE", file.path(DATA_DIR, "Pheno
 HORVATH_CPGS   <- Sys.getenv("METHYL_HORVATH_CPGS",   file.path(DATA_DIR, "HorvathCpGsFile.csv"))
 ## Stage 4's cell/plate-adjusted betas; read by stage5/population.R's adjusted clock pass.
 ADJUSTED_BETAS_FILE <- Sys.getenv("METHYL_ADJUSTED_BETAS_FILE",
-                                  file.path(ANALYSIS_DIR, "B.adjusted.platebatches.txt"))
-## Stage 3's cell-proportion report; source of PHENOTYPE_FILE's cell_* covariates.
+                                  file.path(INTERMEDIATE_DIR, "B.adjusted.platebatches.txt"))
+## Stage 3's cell-proportion table; an analysis-ready covariate source for PHENOTYPE_FILE.
 CELL_PROPORTIONS_FILE <- Sys.getenv("METHYL_CELL_PROPORTIONS_FILE",
-                                    file.path(REPORT_DIR, "cell_proportions.blood.saliva.txt"))
+                                    file.path(DERIVED_DIR, "cell_proportions.blood.saliva.txt"))
 
 ## QC inputs (keyed on Subject_ID), applied in build_phenotype_file.R:
 ##  - DUPS_FILE: intentional duplicate pairs; BOTH aliquots are retained and tagged with a
@@ -109,7 +120,7 @@ SAMPLE_LIST_FILE <- Sys.getenv("METHYL_SAMPLE_LIST_FILE", file.path(DATA_DIR, "s
 ## ---- Additional-analysis inputs (run_additional_analysis.R) ----------------
 ## CLEAN_ID_FILE is produced by build_person_table.R.
 CLEAN_ID_FILE   <- Sys.getenv("METHYL_CLEAN_ID_FILE",   file.path(DATA_DIR, "CATSLife_pseudo_id.sav"))
-DYADS_FILE      <- Sys.getenv("METHYL_DYADS_FILE",      file.path(ANALYSIS_DIR, "catslife_dyads.csv"))
+DYADS_FILE      <- Sys.getenv("METHYL_DYADS_FILE",      file.path(DERIVED_DIR, "catslife_dyads.csv"))
 TWIN_PHENO_FILE <- Sys.getenv("METHYL_TWIN_PHENO_FILE", file.path(ANALYSIS_DIR, "synth_twin_pheno.sav"))
 TWIN_RS_FILE    <- Sys.getenv("METHYL_TWIN_RS_FILE",    file.path(ANALYSIS_DIR, "synth_twin_rs.xlsx"))
 
@@ -378,6 +389,9 @@ load_raw_rgSet <- function() {
         row("PROJECT_DIR",     PROJECT_DIR,     "root",   "all"),
         row("DATA_DIR",        DATA_DIR,        "input",  "all"),
         row("ANALYSIS_DIR",    ANALYSIS_DIR,    "output", "all"),
+        row("DERIVED_DIR",     DERIVED_DIR,     "output", "all"),
+        row("INTERMEDIATE_DIR", INTERMEDIATE_DIR, "output", "all"),
+        row("RESULTS_DIR",     RESULTS_DIR,     "output", "all"),
         row("REPORT_DIR",      REPORT_DIR,      "output", "all"),
         row("IDAT_DIR",        IDAT_DIR,        "input",  "stage1"),
         row("SAMPLE_SHEET",    SAMPLE_SHEET,    "input",  "stage1"),

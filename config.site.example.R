@@ -13,7 +13,15 @@ Sys.setenv(
 
   ## --- roots: inputs (often read-only) vs writable outputs ---
   METHYL_DATA_DIR     = "/secure/catslife/inputs",       # default root for the input files below
-  METHYL_ANALYSIS_DIR = "/scratch/you/catslife/output",  # all outputs + intermediates (must be writable)
+  METHYL_ANALYSIS_DIR = "/scratch/you/catslife/work",    # base for all outputs (must be writable)
+
+  ## --- output sub-trees (optional): separate analysis-ready data / regenerable
+  ## artifacts / findings / logs. Omit these four to keep everything flat under
+  ## METHYL_ANALYSIS_DIR (the historical layout). ---
+  METHYL_DERIVED_DIR      = "/scratch/you/catslife/work/derived",       # person table, dyads, phenotype, cell props, mAge_clocks*
+  METHYL_INTERMEDIATE_DIR = "/scratch/you/catslife/work/intermediate",  # *.RDat, adjusted betas, rank_corr (regenerable)
+  METHYL_RESULTS_DIR      = "/scratch/you/catslife/work/results",       # tables/, sensitivity/, reports/(figures)
+  METHYL_LOGS_DIR         = "/scratch/you/catslife/work/logs",          # run logs + orchestrator checkpoints
 
   ## --- stage 1 (raw arrays) ---
   ## IDATs live one dir per Sentrix barcode under IDAT_DIR (Released_Data/Data/<barcode>/...) —
@@ -26,18 +34,21 @@ Sys.setenv(
   ## --- person table (admin .sav + sample-list crosswalk) ---
   ## build_person_table.R merges ADMIN_FILE (person source) with SAMPLE_LIST_FILE
   ## (the random_id<->nidaid crosswalk, .xlsx) on nidaid and produces CLEAN_ID_FILE —
-  ## point CLEAN_ID_FILE at a writable output path.
+  ## a derived data product, so point it under DERIVED_DIR.
   METHYL_ADMIN_FILE       = "/secure/catslife/individual_admin.sav",
   METHYL_SAMPLE_LIST_FILE = "/secure/catslife/Buffy Coat DNA Methylation Sample List.xlsx",
-  METHYL_CLEAN_ID_FILE    = "/scratch/you/catslife/output/catslife_person_table.sav",
+  METHYL_CLEAN_ID_FILE    = "/scratch/you/catslife/work/derived/catslife_person_table.sav",
 
   ## --- stage 5 (clocks + additional analysis): point to your filenames ---
   METHYL_BETAS_FILE      = "/secure/catslife/BetasFile.csv",
-  METHYL_PHENOTYPE_FILE  = "/secure/catslife/PhenotypeFile.csv",
+  METHYL_PHENOTYPE_FILE  = "/scratch/you/catslife/work/derived/PhenotypeFile.csv",  # built by build_phenotype_file.R
   METHYL_HORVATH_CPGS    = "/secure/catslife/HorvathCpGsFile.csv",
   METHYL_TWIN_PHENO_FILE = "/secure/catslife/MethylationAges_PhenotypeInfo_File.sav"
 )
 
 ## Notes:
 ##  - CLEAN_ID_FILE is produced by build_person_table.R from ADMIN_FILE — run that first.
-##  - DYADS_FILE and TWIN_RS_FILE are produced under ANALYSIS_DIR — no need to set them.
+##  - DYADS_FILE is produced under DERIVED_DIR; TWIN_RS_FILE under ANALYSIS_DIR — no need to set them.
+##  - Sys.setenv here is visible to R only. For run_stage5_pipeline.sh / run_stage6_pipeline.sh
+##    to write logs under work/logs, also export it in your shell:
+##      export METHYL_LOGS_DIR=/scratch/you/catslife/work/logs

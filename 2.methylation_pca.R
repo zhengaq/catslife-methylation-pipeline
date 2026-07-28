@@ -45,11 +45,11 @@ Mpca.s <- Mpca.s[, colSums(!is.finite(Mpca.s)) == 0, drop = FALSE]
 sel    <- which(IDs[, 'DNA_Source'] %in% c("Buffy_Coat", "PBMC", "Saliva"))
 Mpca   <- Mpca.s[sel, , drop = FALSE]
 colpch <- as.factor(IDs$DNA_Source[sel])
-save(Mpca, file = file.path(ANALYSIS_DIR, "testMpca.RDat"))
+save(Mpca, file = file.path(INTERMEDIATE_DIR, "testMpca.RDat"))
 
 cat("Starting PCA\n", date(), "\n")
 pca <- prcomp(Mpca, scale. = FALSE, rank. = 10)
-save(pca, file = file.path(REPORT_DIR, "dasen_Mpca_pca.RDat"))
+save(pca, file = file.path(INTERMEDIATE_DIR, "dasen_Mpca_pca.RDat"))
 
 npc <- min(10, ncol(pca$x))
 imp <- summary(pca)$importance

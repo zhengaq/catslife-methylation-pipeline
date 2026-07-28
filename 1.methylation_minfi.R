@@ -89,7 +89,7 @@ if (RESUME && file.exists(F_DASEN)) {
     rm.samp <- which(!keep.samp)
     if (length(rm.samp) > 0) {
         print(cbind(names(rm.samp), tis[which(!keep.samp), ]))
-        write.table(pd[rm.samp, ], file.path(ANALYSIS_DIR, "methylation_data_detP.failedsamp.txt"), row.names = F, col.names = T, sep = "\t", quote = F)
+        write.table(pd[rm.samp, ], file.path(INTERMEDIATE_DIR, "methylation_data_detP.failedsamp.txt"), row.names = F, col.names = T, sep = "\t", quote = F)
     }
 
     # examine mean detection p-values across all probes to identify any failed probes
@@ -101,7 +101,7 @@ if (RESUME && file.exists(F_DASEN)) {
     cat(table(keep.probe), "\n")
     rm.probe <- which(!keep.probe)
     if (length(rm.probe) > 0) {
-        write.table(as.matrix(names(rm.probe), ncol = 1), file.path(ANALYSIS_DIR, "methylation_data_detP.failedprobe.txt"), row.names = F, col.names = T, sep = "\t", quote = F)
+        write.table(as.matrix(names(rm.probe), ncol = 1), file.path(INTERMEDIATE_DIR, "methylation_data_detP.failedprobe.txt"), row.names = F, col.names = T, sep = "\t", quote = F)
     }
     rm(detP); gc()   ### QC drop-sets computed; free detP (~10GB) before the memory-heavy steps
 

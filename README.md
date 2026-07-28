@@ -5,6 +5,41 @@ CATSLife DNA methylation data. Tissues: blood (PBMC + Buffy Coat) and Saliva,
 plus Cell Line QC controls. Supports both **EPIC v1** (legacy) and **EPIC
 v2.0** arrays via `ARRAY_VERSION` in `config.R`.
 
+## Where things are
+
+Code lives in this git checkout; data lives outside it, in two sibling trees that
+`config.site.R` points at:
+
+```
+<delivery>/
+├── catslife-methylation-pipeline/   this repo — code only
+├── data/                            raw inputs (read-only)
+└── work/                            all generated output
+    ├── derived/       analysis-ready data: person table, dyads, phenotype,
+    │                  cell proportions, mAge_clocks{,_adjusted}.csv
+    ├── intermediate/  regenerable stage 1-4 artifacts: *.RDat, adjusted betas,
+    │                  rank_corr (safe to delete; rebuilt from raw + code)
+    ├── results/       findings: tables/, sensitivity/, reports/(figures), QC report
+    └── logs/          run logs + orchestrator checkpoints
+```
+
+`config.R` resolves every path through `METHYL_*` env vars set in `config.site.R`
+(see `config.site.example.R`). The four output sub-trees default to
+`METHYL_ANALYSIS_DIR` (one flat directory) and can each be pointed at its own
+location: `METHYL_DERIVED_DIR`, `METHYL_INTERMEDIATE_DIR`, `METHYL_RESULTS_DIR`,
+`METHYL_LOGS_DIR`. Run `source("config.R"); describe_paths()` to print the resolved
+map and confirm where each stage will read and write.
+
+| Artifact | Location |
+|---|---|
+| Per-sample clock matrices (`mAge_clocks{,_adjusted}.csv`) | `derived/` |
+| Person table, dyads, phenotype, cell proportions | `derived/` |
+| Normalized/adjusted betas + QC checkpoints (`*.RDat`, `B.adjusted.platebatches.txt`) | `intermediate/` |
+| Descriptive / validity / reliability tables | `results/tables/` |
+| Stage-6 sensitivity tables | `results/sensitivity/` |
+| QC figures (PCA, violins, missingness) | `results/reports/` |
+| Clock QC & validity report | `results/CATSLife_methylation_clocks_QC_report.md` |
+
 ## Pipeline stages
 
 | # | Script | Does |

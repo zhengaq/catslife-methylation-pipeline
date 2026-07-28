@@ -6,17 +6,17 @@ source("config.R")
 suppressMessages(library(data.table))
 
 nchunks  <- NPARTS
-out      <- file.path(ANALYSIS_DIR, "B.adjusted.platebatches.txt")
+out      <- ADJUSTED_BETAS_FILE
 ref_cols <- NULL
 
 for (chunk in 1:nchunks) {
     ### Read whichever per-tissue adjusted files stage 3 wrote (a single-tissue wave writes one),
     ### and merge the present tissues on the shared CpG column.
-    tissue_files <- c(blood  = file.path(REPORT_DIR, paste0("B.adjusted.regression.blood.",  chunk, ".txt")),
-                      saliva = file.path(REPORT_DIR, paste0("B.adjusted.regression.saliva.", chunk, ".txt")))
+    tissue_files <- c(blood  = file.path(INTERMEDIATE_DIR, paste0("B.adjusted.regression.blood.",  chunk, ".txt")),
+                      saliva = file.path(INTERMEDIATE_DIR, paste0("B.adjusted.regression.saliva.", chunk, ".txt")))
     tissue_files <- tissue_files[file.exists(tissue_files)]
     if (!length(tissue_files))
-        stop("stage 4: no per-tissue adjusted files for chunk ", chunk, " under ", REPORT_DIR)
+        stop("stage 4: no per-tissue adjusted files for chunk ", chunk, " under ", INTERMEDIATE_DIR)
 
     parts <- lapply(tissue_files, function(f) {
         d <- fread(f, header = TRUE)

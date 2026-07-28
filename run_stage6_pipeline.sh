@@ -45,7 +45,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-LOGDIR=logs
+LOGDIR="${METHYL_LOGS_DIR:-logs}"   # export METHYL_LOGS_DIR=<work/logs> to keep logs out of the repo
 CKPT="$LOGDIR/.ckpt"
 mkdir -p "$CKPT"
 

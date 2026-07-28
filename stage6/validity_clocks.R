@@ -12,10 +12,9 @@
 
 source("config.R")
 
-CLOCKS_FILE <- file.path(ANALYSIS_DIR, "mAge_clocks.csv")
+CLOCKS_FILE <- file.path(DERIVED_DIR, "mAge_clocks.csv")
 if (!file.exists(CLOCKS_FILE))
     stop("stage6/validity_clocks.R: missing ", CLOCKS_FILE, " — run stage 5 first.")
-SENS_DIR <- file.path(ANALYSIS_DIR, "sensitivity")
 dir.create(SENS_DIR, recursive = TRUE, showWarnings = FALSE)
 
 m      <- read.csv(CLOCKS_FILE, check.names = FALSE, stringsAsFactors = FALSE)

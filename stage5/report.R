@@ -4,10 +4,9 @@
 source("config.R"); source("stage5/helpers.R")
 suppressMessages({ library(dplyr); library(ggplot2); library(corrplot) })
 
-TABLES_DIR <- file.path(ANALYSIS_DIR, "tables"); dir.create(TABLES_DIR, recursive = TRUE, showWarnings = FALSE)
-have <- function(f) file.exists(file.path(ANALYSIS_DIR, f))
+have <- function(f) file.exists(file.path(INTERMEDIATE_DIR, f))
 
-m  <- read.csv(file.path(ANALYSIS_DIR, "mAge_clocks.csv"))
+m  <- read.csv(file.path(DERIVED_DIR, "mAge_clocks.csv"))
 ph <- read.csv(PHENOTYPE_FILE)
 if ("Zygosity" %in% names(ph)) m <- merge(m, unique(ph[, c("Sample", "Zygosity")]), by = "Sample", all.x = TRUE)
 clock_cols <- intersect(LME_CLOCKS, names(m))
@@ -63,7 +62,7 @@ for (cl in clock_cols) {
 ## ---- Rank corrplots (from population's rank_corr.rds) ----------------------
 ## Skip clocks with no finite cross-tissue overlap — corrplot() errors on an all-NA matrix.
 if (have("rank_corr.rds")) {
-  R <- readRDS(file.path(ANALYSIS_DIR, "rank_corr.rds"))
+  R <- readRDS(file.path(INTERMEDIATE_DIR, "rank_corr.rds"))
   for (cl in names(R)) {
     if (!any(is.finite(R[[cl]]$mean))) { cat("rank corrplot: skip", cl, "(no finite cross-tissue overlap)\n"); next }
     png(file.path(REPORT_DIR, paste0("rank_", cl, ".png")), width = 600, height = 600)

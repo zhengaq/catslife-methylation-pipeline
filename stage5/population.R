@@ -94,10 +94,11 @@ clock_meta <- c("Sample", "Subject_ID", "IndividualID", "FamilyID", "random_id",
                 "DNA_Source", "Sex_flag_manual", "clock_excluded")
 attach_ids_and_exclude <- function(merged, demo) {
   i <- match(merged$Sample, demo$Sample)
-  merged$Subject_ID      <- demo$Subject_ID[i]
-  merged$random_id       <- subject_base_id(merged$Subject_ID)
+  has_sid <- "Subject_ID" %in% names(demo)
+  merged$Subject_ID      <- if (has_sid) demo$Subject_ID[i] else NA_character_
+  merged$random_id       <- if (has_sid) subject_base_id(merged$Subject_ID) else NA_integer_
   merged$Sex_flag_manual <- if ("Sex_flag_manual" %in% names(demo)) as.logical(demo$Sex_flag_manual[i])
-                            else is_sex_problem(merged$Subject_ID)
+                            else if (has_sid) is_sex_problem(merged$Subject_ID) else FALSE
   merged$clock_excluded  <- EXCLUDE_SEX_PROBLEM & (merged$Sex_flag_manual %in% TRUE)
   clock_cols <- setdiff(names(merged), clock_meta)
   if (any(merged$clock_excluded)) merged[merged$clock_excluded, clock_cols] <- NA
@@ -111,7 +112,7 @@ write_clocks_csv <- function(merged, fname) {
                     Sex_flag_manual = merged$Sex_flag_manual, clock_excluded = merged$clock_excluded,
                     check.names = FALSE)
   out <- cbind(out, merged[, clock_cols, drop = FALSE])
-  write.csv(out, file.path(ANALYSIS_DIR, fname), row.names = FALSE)
+  write.csv(out, file.path(DERIVED_DIR, fname), row.names = FALSE)
   cat("clocks: wrote", fname, "-", nrow(out), "samples,", sum(out$clock_excluded),
       "excluded (sex problem, clocks NA-ed)\n")
   invisible(out)
@@ -147,7 +148,7 @@ if (length(tissues_present) < 2) {
 } else {
   rank_results <- setNames(lapply(LME_CLOCKS, function(cl) rank_corr_one_clock(merged, cl)), LME_CLOCKS)
 }
-saveRDS(rank_results, file.path(ANALYSIS_DIR, "rank_corr.rds"))
+saveRDS(rank_results, file.path(INTERMEDIATE_DIR, "rank_corr.rds"))
 cat("rank: wrote rank_corr.rds (", length(rank_results), "clocks )\n")
 
 ## --------------------------------------------------------- Pass 2: adjusted ----

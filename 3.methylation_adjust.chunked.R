@@ -118,8 +118,8 @@ if (opt$part == opt$nparts) tend <- ntests
 cat("Starting residualization for\nchunk\tstart\tend\n")
 cat(opt$part, "\t", tstart, "\t", tend, "\n")
 
-blood.resid.file  <- file.path(REPORT_DIR, paste0("B.residualized.blood.",  opt$part, ".txt"))
-saliva.resid.file <- file.path(REPORT_DIR, paste0("B.residualized.saliva.", opt$part, ".txt"))
+blood.resid.file  <- file.path(INTERMEDIATE_DIR, paste0("B.residualized.blood.",  opt$part, ".txt"))
+saliva.resid.file <- file.path(INTERMEDIATE_DIR, paste0("B.residualized.saliva.", opt$part, ".txt"))
 
 ### Adjust blood samples using monocytes as the (omitted) reference cell type
 if (has_blood) {
@@ -149,12 +149,12 @@ rm(list = intersect(c("b.blood", "b.saliva", "MBmat.blood", "MBmat.saliva", "cel
 ########################################################################################################
 ### Drop any stale adjusted file for an absent tissue so stage 4 does not merge it
 for (tissue in c("blood", "saliva")[!c(has_blood, has_saliva)]) {
-    stale <- file.path(REPORT_DIR, paste0("B.adjusted.regression.", tissue, ".", opt$part, ".txt"))
+    stale <- file.path(INTERMEDIATE_DIR, paste0("B.adjusted.regression.", tissue, ".", opt$part, ".txt"))
     if (file.exists(stale)) file.remove(stale)
 }
 for (tissue in c("blood", "saliva")[c(has_blood, has_saliva)]) {
-    resid.file <- file.path(REPORT_DIR, paste0("B.residualized.", tissue, ".", opt$part, ".txt"))
-    adj.file   <- file.path(REPORT_DIR, paste0("B.adjusted.regression.", tissue, ".", opt$part, ".txt"))
+    resid.file <- file.path(INTERMEDIATE_DIR, paste0("B.residualized.", tissue, ".", opt$part, ".txt"))
+    adj.file   <- file.path(INTERMEDIATE_DIR, paste0("B.adjusted.regression.", tissue, ".", opt$part, ".txt"))
     d <- read.table(resid.file, header = TRUE, check.names = FALSE)
 
     rownames(d) <- d[, 1]   ### CpG names from the first column, then drop it

@@ -17,8 +17,8 @@ library("wateRmelon")
 ###   (0) F_DASEN   -- the dasen checkpoint: skip everything; only betas/M extraction + save remain.
 ###   (1) F_NOOBFLT -- the noob checkpoint: re-run only dasen (skips read/detP/QC/mapToGenome/noob).
 ###   (2) fresh     -- read IDATs -> detP QC -> map + drop SNP loci -> noob -> dasen.
-### MSetNoob.flt (the pre-normalization set, needed for the wateRmelon `qual` QC plots) is available
-### in tiers 1/2 but NOT tier 0, so those QC plots are skipped on an F_DASEN resume.
+### MSetNoob.flt (the pre-normalization set the wateRmelon `qual` QC plots need) exists in tiers 1/2
+### only, so those plots are skipped on an F_DASEN resume.
 ########################################################################################################
 dasen.melon <- NULL
 
@@ -30,9 +30,8 @@ if (RESUME && file.exists(F_DASEN)) {
     cat("RESUME: loading noob checkpoint from", F_NOOBFLT, "\n")
     ckpt <- load_one(F_NOOBFLT)
     if (!is.list(ckpt) || is.null(ckpt$mset))
-        stop("F_NOOBFLT is an old-format checkpoint (a bare MethylSet, predating the resume + ",
-             "SNP-drop redesign). Delete it and re-run stage 1 fresh (METHYL_RESUME=FALSE) so the ",
-             "SNP-locus drop is applied to the deliverable.")
+        stop("F_NOOBFLT (", F_NOOBFLT, ") is not a list(mset, pd, tis) checkpoint. Delete it ",
+             "and re-run stage 1 with METHYL_RESUME=FALSE.")
     MSetNoob.flt <- ckpt$mset
     pd  <- ckpt$pd
     tis <- ckpt$tis
@@ -133,9 +132,9 @@ if (RESUME && file.exists(F_DASEN)) {
 
     ####################################################################################################
     ### 3. Map to genome + drop SNP loci, then background-correct (noob) and build the QC-filtered set.
-    ### mapToGenome + dropLociWithSnps define the probes to KEEP (mappable, not on a SNP). noob needs
-    ### the raw RGChannelSet, so it runs separately on rgSet; the SNP-surviving + detP-passing probe set
-    ### is then applied to the noob output so the SNP-locus drop actually reaches the deliverable.
+    ### mapToGenome + dropLociWithSnps define the probes to keep (mappable, not on a SNP). noob needs
+    ### the raw RGChannelSet, so it runs separately on rgSet, and the SNP-surviving + detP-passing
+    ### probe set is then applied to the noob output.
     ####################################################################################################
     grgSet <- mapToGenome(rgSet)        ## Map to genome; also drops probes that do not map.
 
@@ -156,9 +155,8 @@ if (RESUME && file.exists(F_DASEN)) {
     stopifnot(all(colnames(grgSet.ns) == pd$Sample_Group))   ### sample order matches metadata (fail loud)
     rm(grgSet); gc()   ### mapToGenome result consumed
 
-    ### The probes to keep in the deliverable: mappable + not-on-SNP (rownames(grgSet.ns)) AND
-    ### detP-passing (not in rm.probe). Applied to the noob output below; this is the step that
-    ### carries the SNP drop into MSetNoob.flt (and thus into dasen_betas.RDat).
+    ### The probes to keep: mappable and not on a SNP (rownames(grgSet.ns)) and detP-passing
+    ### (not in rm.probe). Applied to the noob output below, and so to dasen_betas.RDat.
     keep.probes <- setdiff(rownames(grgSet.ns), names(rm.probe))
     rm(grgSet.ns); gc()   ### genome-mapped set consumed (only the probe id list is carried forward)
 
@@ -186,8 +184,8 @@ if (RESUME && file.exists(F_DASEN)) {
     stopifnot(!any(rownames(MSetNoob.flt) %in% names(rm.probe)))   ### no detP-failed probe survives
     rm(MSetNoob); gc()   ### MSetNoob.flt carries forward; free MSetNoob (~25GB) before dasen
 
-    ### Self-contained checkpoint: the QC-filtered MethylSet + the retained-sample metadata, so a
-    ### resume can jump straight to dasen without re-reading IDATs or recomputing detP (see the top).
+    ### Checkpoint the QC-filtered MethylSet with the retained-sample metadata, so a resume can go
+    ### straight to dasen (tier 1 above).
     if (SAVE_INTERMEDIATES) {
         ckpt <- list(mset = MSetNoob.flt, pd = pd, tis = tis)
         save(ckpt, file = F_NOOBFLT)
@@ -196,10 +194,9 @@ if (RESUME && file.exists(F_DASEN)) {
 }
 
 ########################################################################################################
-### Normalize with dasen (tiers 1/2 only; tier 0 already loaded dasen.melon from F_DASEN). Default:
-### dasen_stream() (streaming/low-memory reimplementation in config.R), output identical to
-### wateRmelon::dasen but with a ~40-60GB peak instead of the >100GB stock needs at cohort scale.
-### F_DASEN is written BEFORE the memory-heavy QC/beta extraction below, so a crash there can resume.
+### Normalize with dasen (tiers 1/2; tier 0 has already loaded dasen.melon). dasen_stream() in
+### config.R is the default (see DASEN_STREAM). F_DASEN is saved before the memory-heavy beta
+### extraction and QC below, so a crash there can resume from it.
 ########################################################################################################
 if (is.null(dasen.melon)) {
     dasen.melon <- if (DASEN_STREAM) dasen_stream(MSetNoob.flt) else dasen(MSetNoob.flt)

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# run_stage5_pipeline.sh — orchestrate the full stage-5 chain end to end:
+# run_stage5_pipeline.sh: run the ID bridge and stage 5 end to end:
 #   1. person_table  scripts/build/build_person_table.R   (admin .sav + sample list -> CLEAN_ID_FILE)
 #   2. dyads         scripts/build/catslife_id_dyads.R     (person table -> DYADS_FILE)
 #   3. phenotype     scripts/build/build_phenotype_file.R  (the ID bridge -> PhenotypeFile.csv)
@@ -11,8 +11,7 @@
 # step. Every step is fail-fast (a non-zero exit stops the pipeline) and is streamed to both the
 # console and logs/stage5_pipeline_<step>.log.
 #
-# Paths (inputs/outputs) are NOT set here; every step resolves them through config.R / config.site.R
-# and fails loud on its own if an input is missing.
+# Input and output paths come from config.R / config.site.R; each step stops if an input is missing.
 #
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -20,7 +19,7 @@ RSCRIPT="${RSCRIPT:-Rscript}"   # overridable (e.g. a specific Rscript, or a stu
 
 usage() {
   cat >&2 <<'USAGE'
-run_stage5_pipeline.sh — build the ID bridge (person table -> dyads -> phenotype) and run stage 5,
+run_stage5_pipeline.sh: build the ID bridge (person table -> dyads -> phenotype) and run stage 5,
 with per-step checkpoint/resume and logging.
 
   ./run_stage5_pipeline.sh            run/resume: skip completed steps, run the rest
@@ -92,13 +91,13 @@ for s in "${STEPS[@]}"; do
   fi
   echo "[$(ts)] run   $name  ($script)"
   log="$LOGDIR/stage5_pipeline_${name}.log"
-  # process substitution (not a pipe) so $? is the Rscript exit code, not tee's
+  # process substitution instead of a pipe, so $? is Rscript's exit code
   if "$RSCRIPT" "$script" > >(tee "$log") 2>&1; then
     touch "$CKPT/$name.done"
     echo "[$(ts)] ok    $name"
   else
     rc=$?
-    echo "[$(ts)] FAIL  $name  (exit $rc) — see $log. Fix the cause and re-run to resume here." >&2
+    echo "[$(ts)] FAIL  $name  (exit $rc); see $log. Fix the cause and re-run to resume here." >&2
     exit "$rc"
   fi
 done

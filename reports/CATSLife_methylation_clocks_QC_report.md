@@ -16,7 +16,7 @@ DNA methylation was assayed on the Illumina Infinium MethylationEPIC v2.0 array 
 
 Raw IDATs were read with `minfi`. Samples and probes with more than 1% of calls undetected (detection *p* ≥ 0.05) were removed, dropping 44 of 1,689 samples. The remaining data were background-corrected (`noob`), probes overlapping SNPs or mapping ambiguously were dropped (`dropLociWithSnps`), and signals were normalised with `dasen` (`wateRmelon`). EPIC v2 replicate-probe identifiers were collapsed to their base identifiers, retaining the replicate with the lowest missingness.
 
-The fifteen epigenetic clocks were then computed with `dnaMethyAge` on the **normalised, unadjusted** betas. Because the published clocks are fixed-weight predictors trained on normalised input, cell-composition and plate effects are not removed before the clock is applied; they are instead estimated separately (EpiDISH cell proportions; plate batch) and made available as covariates for age-acceleration models.
+The fifteen epigenetic clocks were then computed with `dnaMethyAge` on the **normalised, unadjusted** betas. The published clocks are fixed-weight predictors trained on normalised input, so cell composition and plate effects are left in the betas. They are estimated separately (EpiDISH cell proportions; plate batch) and supplied as covariates for age-acceleration models.
 
 ## 3. Completeness
 
@@ -44,26 +44,26 @@ For each clock, the correlation with chronological age, the technical reliabilit
 | Horvath (2013) | age | 0.80 | **0.39** | 0.75 |
 | PhenoAge | phenotypic age | 0.74 | **0.34** | 0.76 |
 
-The trained age clocks correlate between 0.54 and 0.95 with chronological age. The low values for DunedinPACE, epiTOC/epiTOC2, and ZhangY are by design, since these estimate the pace of aging, mitotic history, and mortality risk rather than age. Even for the age clocks the correlations are attenuated, because the cohort's narrow age range (SD 5.7 years) restricts the variance available to predict.
+The trained age clocks correlate between 0.54 and 0.95 with chronological age. DunedinPACE, epiTOC/epiTOC2 and ZhangY estimate the pace of aging, mitotic history and mortality risk, so their low values are expected. The age-clock correlations are also attenuated by the cohort's narrow age range (SD 5.7 years).
 
-Accuracy is only one axis, and technical reliability varies widely without following it. The principal-component and second-generation clocks are the most reliable (PCGrimAge ICC 0.98, DunedinPACE 0.92, DNAmTL 0.90), whereas the first-generation Horvath (0.39) and PhenoAge (0.34) clocks are considerably noisier, in line with their known reliability limitations. These estimates come from twelve duplicate pairs and so indicate rank order rather than exact values.
+Technical reliability varies widely and does not track the age correlation. The principal-component and second-generation clocks are the most reliable (PCGrimAge ICC 0.98, DunedinPACE 0.92, DNAmTL 0.90); the first-generation Horvath (0.39) and PhenoAge (0.34) clocks are considerably noisier, in line with their known reliability limitations. These estimates come from twelve duplicate pairs, so the rank order is more trustworthy than the exact values.
 
-DNAmTL differs in kind from the other measures. Labelled `LuA2019` in `dnaMethyAge`, it estimates telomere length in kilobases (range 6.6–8.0, median 7.4) rather than age, and its negative correlation with chronological age is the expected biology rather than a failure.
+DNAmTL (labelled `LuA2019` in `dnaMethyAge`) estimates telomere length in kilobases (range 6.6–8.0, median 7.4), not age. Telomeres shorten with age, so its negative correlation with chronological age is expected.
 
 ## 5. Properties relevant to analysis
 
-**Relatedness.** The cohort is predominantly twins and siblings, so its samples are not independent. This dependence does not distort the correlations above: recomputing them on one randomly chosen sample per person, and then per family, changes every clock by at most 0.04. Analyses must nonetheless account for family clustering, through a family random effect or cluster-robust standard errors, while the same family and zygosity structure supports twin and family designs directly.
+**Relatedness.** The cohort is predominantly twins and siblings, so its samples are not independent. The correlations above are not distorted by this: recomputing them on one randomly chosen sample per person, and then per family, changes every clock by at most 0.04. Analyses still need to account for family clustering, through a family random effect or cluster-robust standard errors. The same family and zygosity structure supports twin and family designs.
 
 **Repeated measures.** The two waves, a mean of 6.1 years apart, allow within-person change models. Across-wave stability is high for the reliable clocks (ZhangQ 0.95, Horvath2 and PCGrimAge 0.90), and for the trained age clocks methylation age advanced close to one year per chronological year (0.8–1.2), as expected.
 
-**Batch structure.** Principal-components analysis shows that the leading axis of variation is sex, which accounts for 99% of the first component, as expected when sex chromosomes are retained. Once they are removed, the dominant axis becomes sequencing plate (86% of the first autosomal component), a genuine batch effect. Because the clocks use unadjusted betas, analyses of age acceleration should include cell composition and plate as covariates; intrinsic and extrinsic variants, adjusting for plate and cell proportions or for plate alone, are provided for this.
+**Batch structure.** In a principal-components analysis the leading axis of variation is sex, which accounts for 99% of the first component, as expected when sex chromosomes are retained. With them removed, the dominant axis is the array plate (86% of the first autosomal component), a genuine batch effect. Because the clocks use unadjusted betas, analyses of age acceleration should include cell composition and plate as covariates; intrinsic and extrinsic variants, adjusting for plate and cell proportions or for plate alone, are provided for this.
 
-**Sex.** Sex was not verified independently from chromosomal intensity, so the three sex-discordant exclusions rest on curated flags rather than a genotype- or intensity-based determination, and a small number of further discordances cannot be excluded.
+**Sex.** Sex was not verified independently from chromosomal intensity. The three sex-discordant exclusions rest on curated flags, and a small number of further discordances cannot be ruled out.
 
 ## 6. Recommendations
 
 - **Prefer reliable measures.** Where a construct allows a choice, favour PCGrimAge, DunedinPACE, ZhangQ, and DNAmTL; treat the Horvath (2013) and PhenoAge age estimates as noisy in this cohort, and interpret single-clock findings from them cautiously.
-- **Model relatedness.** Use family-clustered or mixed models, and do not treat samples as independent.
+- **Model relatedness.** Use family-clustered or mixed models; samples are not independent.
 - **Adjust age acceleration** for cell composition and plate, choosing the intrinsic or extrinsic variant to match the question.
 - **Honour the exclusion flags.** Curated sex-discordant individuals and detection-*p* failures are retained but flagged; apply the provided `clock_excluded` indicator unless there is reason to override it.
 - **Use DNAmTL as telomere length,** not as an age or age-acceleration measure.

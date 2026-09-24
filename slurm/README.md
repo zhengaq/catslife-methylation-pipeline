@@ -6,13 +6,13 @@ run it interactively if you want it.
 
 ## One-time setup
 
-1. Fill in `config.site.R` at the repo root (paths for the delivery) — the jobs read it
-   automatically via the `.methyl-root` marker, so **submit from the repo root**.
+1. Fill in `config.site.R` at the repo root (paths for the delivery). The jobs find it
+   through the `.methyl-root` marker, so **submit from the repo root**.
 2. In `slurm/env.sh`, set `R_MODULE` to your cluster's R module (e.g. `R/4.5.3`), or leave
    it empty if `Rscript` is already on the batch PATH.
 3. Pick `NPARTS` (stage-3 CpG chunks). Default is 5. If you change it, change it in **two**
    places: `NPARTS` in `slurm/env.sh` (or `export METHYL_NPARTS=...`) **and** `--array=1-N`
-   in `slurm/stage3.sbatch`. `stage3.sbatch` asserts they agree and fails fast if not.
+   in `slurm/stage3.sbatch`. `stage3.sbatch` exits with an error if they differ.
 
 ## Run the whole chain
 
@@ -36,6 +36,6 @@ sbatch --dependency=afterok:<stage3_jobid> slurm/stage4_merge.sbatch
 |-------|-----------------|----------|-------|
 | 1     | 96G  | 12h | read + noob + dasen at ~1600 samples; detectionP chunked (`METHYL_DETP_CHUNK`, default 200) |
 | 3     | 48G/task | 24h | each array task loads the full dasen betas (~24G) then does its CpG slice |
-| 4     | 32G  | 2h  | merge NPARTS chunks -> `output/B.adjusted.platebatches.txt` |
+| 4     | 32G  | 2h  | merge NPARTS chunks -> `B.adjusted.platebatches.txt` (intermediate dir) |
 
 Logs land in `slurm/logs/`. Track with `squeue -u $USER`.

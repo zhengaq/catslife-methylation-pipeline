@@ -1,18 +1,18 @@
-### stage5/helpers.R — constants + shared functions for the core stage-5 modules.
+### stage5/helpers.R: constants and shared functions for the stage-5 modules.
 suppressMessages({
   library(dplyr); library(tidyr); library(purrr)
 })
 
-## ---- Constants ------------------------------------------------------------
+## Constants ----
 DNA_SOURCES <- c("PBMC", "Buffy_Coat", "Saliva")
 
 ## Clock mAge columns in the merged clock table (population.R).
-LME_CLOCKS <- c("Dunedin_Pace", "Hannum_mAge", "Horvath_mAge", "Horvath2_mAge",
+CLOCK_COLUMNS <- c("Dunedin_Pace", "Hannum_mAge", "Horvath_mAge", "Horvath2_mAge",
                 "ZhangQ_mAge", "PhenoAge_mAge", "epiTOC_mitoticdivisions",
                 "epiTOC2_mitoticdivisions", "PCGrimAge_mAge", "ZhangY_mAge",
                 "LuA_mAge", "ShirebyG2020_mAge", "PedBE_mAge", "PanM2_mAge", "PanM3_mAge")
 
-## ---- Statistical helpers --------------------------------------------------
+## Statistical helpers ----
 ## Fisher z-transform; the clamp keeps r = +/-1 (e.g. a correlation matrix's
 ## diagonal) from producing +/-Inf.
 z_fisher <- function(x, eps = 1e-6) atanh(pmin(pmax(x, -1 + eps), 1 - eps))
@@ -25,7 +25,7 @@ zygosity_from_famtype <- function(x) {
     x == 3 ~ "DZ",       x == 4 ~ "MZ", TRUE ~ NA_character_)
 }
 
-## ---- Per-clock cross-tissue rank bootstrap --------------------------------
+## Per-clock cross-tissue rank bootstrap ----
 ## One member per family; rank the clock within each tissue and rank Age within
 ## PBMC; Spearman-correlate the 4 rank vectors; repeat n_iter times and aggregate.
 rank_corr_one_clock <- function(df, clock_col, n_iter = 100, seed = 123) {
@@ -57,10 +57,10 @@ rank_corr_one_clock <- function(df, clock_col, n_iter = 100, seed = 123) {
        fisher_r = tanh(apply(z_fisher(arr), 1:2, mean)))
 }
 
-## ---- Duplicate technical reliability (reliability.R) ----------------------
-## Duplicate aliquots (DUPS_FILE) are the same DNA re-run and therefore
-## EXCHANGEABLE (no rater/occasion order), so the reliability model is the
-## one-way random-effects ICC(1,1), not the two-way ICC(2,1). Unbalanced group
+## Duplicate technical reliability (reliability.R) ----
+## Duplicate aliquots (DUPS_FILE) are the same DNA re-run, so the members of a
+## group are exchangeable (no rater or occasion order) and the model is the
+## one-way random-effects ICC(1,1). Unbalanced group
 ## sizes use the n0 (average-group-size) correction; returns NA when fewer than
 ## two groups carry >= 2 finite values.
 icc_oneway <- function(x, g) {
@@ -101,10 +101,10 @@ dup_reliability_one_clock <- function(d, clock_col, group_col = "DupGroupID") {
              retest_r = r, mean_abs_diff = mad)
 }
 
-## ---- Wave-1 ∩ wave-2 longitudinal descriptives (longitudinal.R) -----------
+## Wave-1/wave-2 longitudinal descriptives (longitudinal.R) ----
 ## Per clock, within-person change across waves among LongitudinalGroupIDs
-## sampled in BOTH waves within the SAME tissue: one row per tissue with the
-## within-person wave-1<->wave-2 correlation, mean Δ epigenetic + chronological
+## sampled in both waves within the same tissue: one row per tissue with the
+## within-person wave-1<->wave-2 correlation, mean change in epigenetic and chronological
 ## age, and their ratio (epigenetic years per calendar year).
 wave_overlap_one_clock <- function(d, clock_col) {
   keep <- is.finite(d[[clock_col]]) & !is.na(d$LongitudinalGroupID) & d$Wave %in% c(1, 2)

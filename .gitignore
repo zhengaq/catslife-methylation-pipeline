@@ -1,7 +1,7 @@
-# Site/server path profile — never commit (environment-specific paths)
+# Site/server path profile: environment-specific, never commit
 config.site.R
 
-# Data & outputs — never commit (governance + size)
+# Data & outputs: never commit (governance + size)
 /data/
 /output/
 *.RDat
@@ -21,9 +21,7 @@ config.site.R
 # ExperimentHub / AnnotationHub caches
 .cache/
 
-# Dev / agent tooling. .agents/.claude/.lavish ARE versioned in this (private) dev
-# repo and kept out of the public runtime via .runtimeignore, so they are deliberately
-# NOT ignored here (a path in .runtimeignore must not also be in .gitignore).
+# Agent skill lockfile
 /skills-lock.json
 
 # R session cruft

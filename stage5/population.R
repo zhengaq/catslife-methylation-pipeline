@@ -1,4 +1,4 @@
-### stage5/population.R — clock computation + cross-tissue rank-correlation
+### stage5/population.R: clock computation and the cross-tissue rank-correlation
 ### bootstrap. Writes mAge_clocks.csv, rank_corr.rds, and (when
 ### B.adjusted.platebatches.txt exists) mAge_clocks_adjusted.csv.
 source("config.R"); source("stage5/helpers.R")
@@ -6,16 +6,15 @@ suppressMessages({
   library(data.table); library(dplyr); library(tibble); library(dnaMethyAge)
 })
 
-## X-prefix beta colnames explicitly: as.data.frame() does NOT apply R's
-## check.names "X"-mangling to matrix colnames (unlike data.frame()), and the
-## clock join below expects the "X"-prefixed sample ids.
+## X-prefix beta colnames explicitly: as.data.frame() on a matrix skips R's
+## check.names "X" prefix that data.frame() would add, and the clock join below
+## expects "X"-prefixed sample ids.
 x_prefix_cols <- function(m) { colnames(m) <- paste0("X", colnames(m)); m }
 
-## Fraction of Horvath2013's CpGs present in the beta matrix — a broadly-covered proxy
-## for whether the full clock loop will find its probes (catches a wrong array version,
-## missing v2 probe-id canonicalization, or wrong orientation). Prints the rate and
-## returns TRUE/FALSE; the caller decides whether a miss is fatal (Pass 1) or a skip
-## (Pass 2, the optional additive pass).
+## Fraction of Horvath2013's CpGs present in the beta matrix, a proxy for whether the
+## clock loop will find its probes (catches a wrong array version, missing v2 probe-id
+## canonicalization, or a transposed matrix). Prints the rate and returns TRUE/FALSE;
+## a miss stops Pass 1 and skips the optional Pass 2.
 assert_clock_cpg_coverage <- function(Betas, threshold = CLOCK_CPG_COVERAGE_MIN) {
   data("HorvathS2013", package = "dnaMethyAge", envir = environment())
   probes <- setdiff(coefs$Probe, "Intercept")
@@ -50,7 +49,7 @@ compute_clocks <- function(Betas, info2) {
   clock_tab <- function(key, mage, accel) {
     a <- tryCatch(as.data.frame(methyAge(Betas, age_info = info2, clock = key)),
                   error = function(e) {
-                    warning("compute_clocks: ", key, " crashed (likely ~0% probe coverage) - ",
+                    warning("compute_clocks: ", key, " failed (likely ~0% probe coverage); ",
                             "filling ", mage, "/", accel, " with NA: ", conditionMessage(e))
                     data.frame(Sample = info2$Sample, mAge = NA_real_, Age_Acceleration = NA_real_)
                   })
@@ -63,43 +62,39 @@ compute_clocks <- function(Betas, info2) {
     s <- clock_specs[i, ]
     merged <- left_join(merged, clock_tab(s$key, s$mage, s$accel), by = "Sample")
   }
-  invisible(tryCatch(methyAge(Betas, age_info = info2, clock = "BernabeuE2023c"),
-                     error = function(e) NULL))   # cAge: author note "does not run"; unused
-  ## Undo this function's own "X" prefix — unconditional, unlike strip_x_prefix()
-  ## (which only strips a digit-following X), since it removes exactly what was added.
+  ## Undo the "X" prefix added above. Unconditional, unlike strip_x_prefix() (which
+  ## only strips an X before a digit), because it removes exactly what was added.
   merged$Sample <- sub("^X", "", merged$Sample)
   merged
 }
 
-## ------------------------------------------------------- Phenotype table ----
+## Phenotype table ----
 Demographics <- read.csv(PHENOTYPE_FILE)
 if ("DNASource" %in% names(Demographics) && !"DNA_Source" %in% names(Demographics))
   Demographics$DNA_Source <- Demographics$DNASource
-## Canonicalize defensively and drop Cell Line QC controls — the clocks are trained
-## on human tissue, not cell lines.
+## Drop Cell Line QC controls: the clocks are trained on human tissue.
 Demographics$DNA_Source <- canonicalize_dna_source(Demographics$DNA_Source)
 Demographics <- Demographics[Demographics$DNA_Source != "Cell_Line", ]
 if (!"IndividualID" %in% names(Demographics))
-  stop("PHENOTYPE_FILE missing IndividualID — build it with scripts/build/build_phenotype_file.R.")
+  stop("PHENOTYPE_FILE missing IndividualID; build it with scripts/build/build_phenotype_file.R.")
 info <- Demographics[, intersect(c("Sample", "IndividualID", "Age", "Sex", "FamilyID", "DNA_Source"),
                                  names(Demographics))]
 info$Sample <- paste0("X", info$Sample); info2 <- info
 
-## Output post-processing for a clock table: attach the array-facing random_id + the curated
-## sex-problem flag, apply the exclusion (NA the clock columns for flagged rows when
-## EXCLUDE_SEX_PROBLEM is on; the row + ids are kept), and write with the person-table id names
-## aid/pfamid. The in-memory `merged` keeps IndividualID/FamilyID for the rank bootstrap; only the
-## written CSV is renamed.
+## Post-process a clock table: attach the array-facing random_id and Identity_flag (samples
+## SAMPLE_SWAPS_FILE marks as doubtful), apply the exclusion (with EXCLUDE_IDENTITY_FLAGGED on,
+## flagged rows keep their ids but get NA clocks), and write with the person-table id names
+## aid/pfamid. The in-memory `merged` keeps IndividualID/FamilyID for the rank bootstrap; only
+## the written CSV is renamed.
 clock_meta <- c("Sample", "Subject_ID", "IndividualID", "FamilyID", "random_id", "Age", "Sex",
-                "DNA_Source", "Sex_flag_manual", "clock_excluded")
+                "DNA_Source", "Identity_flag", "clock_excluded")
 attach_ids_and_exclude <- function(merged, demo) {
   i <- match(merged$Sample, demo$Sample)
   has_sid <- "Subject_ID" %in% names(demo)
   merged$Subject_ID      <- if (has_sid) demo$Subject_ID[i] else NA_character_
   merged$random_id       <- if (has_sid) subject_base_id(merged$Subject_ID) else NA_integer_
-  merged$Sex_flag_manual <- if ("Sex_flag_manual" %in% names(demo)) as.logical(demo$Sex_flag_manual[i])
-                            else if (has_sid) is_sex_problem(merged$Subject_ID) else FALSE
-  merged$clock_excluded  <- EXCLUDE_SEX_PROBLEM & (merged$Sex_flag_manual %in% TRUE)
+  merged$Identity_flag   <- if ("Identity_flag" %in% names(demo)) as.logical(demo$Identity_flag[i]) else FALSE
+  merged$clock_excluded  <- EXCLUDE_IDENTITY_FLAGGED & (merged$Identity_flag %in% TRUE)
   clock_cols <- setdiff(names(merged), clock_meta)
   if (any(merged$clock_excluded)) merged[merged$clock_excluded, clock_cols] <- NA
   merged
@@ -109,52 +104,49 @@ write_clocks_csv <- function(merged, fname) {
   out <- data.frame(Sample = merged$Sample, random_id = merged$random_id,
                     aid = merged$IndividualID, pfamid = merged$FamilyID, Age = merged$Age,
                     Sex = merged$Sex, DNA_Source = merged$DNA_Source,
-                    Sex_flag_manual = merged$Sex_flag_manual, clock_excluded = merged$clock_excluded,
+                    Identity_flag = merged$Identity_flag, clock_excluded = merged$clock_excluded,
                     check.names = FALSE)
   out <- cbind(out, merged[, clock_cols, drop = FALSE])
   write.csv(out, file.path(DERIVED_DIR, fname), row.names = FALSE)
   cat("clocks: wrote", fname, "-", nrow(out), "samples,", sum(out$clock_excluded),
-      "excluded (sex problem, clocks NA-ed)\n")
+      "identity-flagged with clocks NA-filled\n")
   invisible(out)
 }
 
-## ------------------------------------------------------ Pass 1: unadjusted ----
+## Pass 1: unadjusted ----
 ## Published clocks are fixed-weight predictors trained on normalized input, so
-## they run on stage-1's dasen betas, not the cell/plate-adjusted stage-4 betas.
+## the primary pass runs on stage 1's dasen betas.
 dv    <- load_one(F_DASENB)
 Betas <- dv$b; rm(dv); gc()                    ### the M-values in dv are unused here; free them before the beta copy
 Betas <- x_prefix_cols(as.data.frame(Betas))
 if (!assert_clock_cpg_coverage(Betas))
-  stop("population.R: too few clock CpGs in the beta matrix — check ARRAY_VERSION / ",
+  stop("population.R: too few clock CpGs in the beta matrix; check ARRAY_VERSION / ",
        "probe-id canonicalization before trusting clock output.")
 merged <- compute_clocks(Betas, info2)
 rm(Betas); gc()   ### Pass 1 betas consumed; free before the rank bootstrap and the Pass 2 adjusted betas
 merged <- attach_ids_and_exclude(merged, Demographics)   ### random_id + sex-problem exclusion (in-memory)
 write_clocks_csv(merged, "mAge_clocks.csv")
 
-## ------------------------------------------ Rank-correlation bootstrap ----
+## Rank-correlation bootstrap ----
 ## Cross-tissue consistency of each clock: bootstrap the Spearman rank correlation
-## across tissues (+ age in PBMC). Needs >=2 tissues present — check upfront rather
-## than run 100 iterations x 15 clocks guaranteed to yield an all-NA matrix.
+## across tissues (plus age in PBMC). With fewer than 2 tissues every result would be
+## NA, so the bootstrap is skipped and NA results are written.
 tissues_present <- intersect(unique(merged$DNA_Source), DNA_SOURCES)
 if (length(tissues_present) < 2) {
-  cat("rank: skipping cross-tissue rank-correlation bootstrap — insufficient tissue coverage: only ",
-      length(tissues_present), " tissue(s) present in this cohort (",
-      paste(tissues_present, collapse = ", "), "); a cross-tissue comparison needs >=2. ",
-      "This reflects the cohort's tissue scope (e.g. a single-tissue delivery wave), ",
-      "not a data-quality problem.\n", sep = "")
+  cat("rank: skipping the cross-tissue rank-correlation bootstrap; it needs >= 2 tissues and ",
+      "this cohort has ", length(tissues_present), " (",
+      paste(tissues_present, collapse = ", "), ")\n", sep = "")
   na_result <- list(mean = NA_real_, median = NA_real_, min = NA_real_, max = NA_real_, fisher_r = NA_real_)
-  rank_results <- setNames(lapply(LME_CLOCKS, function(cl) na_result), LME_CLOCKS)
+  rank_results <- setNames(lapply(CLOCK_COLUMNS, function(cl) na_result), CLOCK_COLUMNS)
 } else {
-  rank_results <- setNames(lapply(LME_CLOCKS, function(cl) rank_corr_one_clock(merged, cl)), LME_CLOCKS)
+  rank_results <- setNames(lapply(CLOCK_COLUMNS, function(cl) rank_corr_one_clock(merged, cl)), CLOCK_COLUMNS)
 }
 saveRDS(rank_results, file.path(INTERMEDIATE_DIR, "rank_corr.rds"))
 cat("rank: wrote rank_corr.rds (", length(rank_results), "clocks )\n")
 
-## --------------------------------------------------------- Pass 2: adjusted ----
-## Additive, comparison-only second pass on stage 4's cell/plate-adjusted betas.
-## NOT wired into report.R/inferential — mAge_clocks.csv (Pass 1) stays the sole
-## downstream input.
+## Pass 2: adjusted ----
+## Comparison pass on stage 4's cell/plate-adjusted betas, written to
+## mAge_clocks_adjusted.csv. Everything downstream reads Pass 1's mAge_clocks.csv.
 if (file.exists(ADJUSTED_BETAS_FILE)) {
   BetasAdj <- fread(ADJUSTED_BETAS_FILE) %>% column_to_rownames(var = "CpG")
   BetasAdj <- x_prefix_cols(BetasAdj)
@@ -163,9 +155,9 @@ if (file.exists(ADJUSTED_BETAS_FILE)) {
     mergedAdj <- attach_ids_and_exclude(mergedAdj, Demographics)
     write_clocks_csv(mergedAdj, "mAge_clocks_adjusted.csv")
   } else {
-    cat("population.R: skipping the adjusted-betas clock pass — insufficient clock-CpG coverage\n")
+    cat("population.R: skipping the adjusted-betas clock pass (insufficient clock-CpG coverage)\n")
   }
 } else {
   cat("population.R: ADJUSTED_BETAS_FILE not found (", ADJUSTED_BETAS_FILE,
-      ") — skipping the adjusted-betas clock pass\n")
+      "); skipping the adjusted-betas clock pass\n")
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 ### Merge the per-chunk batch-adjusted blood + saliva outputs from stage 3 into
-### one matrix (rows = CpGs, cols = samples) -> output/B.adjusted.platebatches.txt
-### Streamed chunk-by-chunk (fwrite append), so the full cohort matrix is never held in memory.
+### one matrix (rows = CpGs, cols = samples) -> ADJUSTED_BETAS_FILE (B.adjusted.platebatches.txt).
+### Written chunk by chunk (fwrite append), so the full cohort matrix is never held in memory.
 source("config.R")
 suppressMessages(library(data.table))
 
@@ -30,9 +30,8 @@ for (chunk in 1:nchunks) {
     ### Every chunk must carry the same columns in the same order (the appended rows rely on it)
     if (is.null(ref_cols)) {
         ref_cols <- colnames(d.tmp)
-    } else if (!all(colnames(d.tmp) == ref_cols)) {
-        cat("Colnames of chunk", chunk, "DO NOT MATCH chunk 1. Exiting now.\n", date(), "\n")
-        quit(save = 'no')
+    } else if (!identical(colnames(d.tmp), ref_cols)) {
+        stop("stage 4: columns of chunk ", chunk, " differ from chunk 1; ", out, " is incomplete")
     }
 
     ### Header only on the first chunk (append=FALSE also truncates any stale file); append the rest

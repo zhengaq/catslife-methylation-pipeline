@@ -1,9 +1,9 @@
 #!/usr/bin/env Rscript
-### scripts/build/build_person_table.R — derive the CATSLife person table (CLEAN_ID_FILE) by
+### scripts/build/build_person_table.R: build the CATSLife person table (CLEAN_ID_FILE) by
 ### merging the individual-admin .sav (ADMIN_FILE) with the array<->person crosswalk
 ### (SAMPLE_LIST_FILE: random_id <-> nidaid) on nidaid. The result carries random_id (the
-### sheet's join key) alongside aid/pfamid, so build_phenotype_file.R can reach the person
-### world in one hop. Feeds catslife_id_dyads.R and build_phenotype_file.R. Run FIRST.
+### sample sheet's join key) alongside aid/pfamid, so build_phenotype_file.R reaches the
+### person ids in one join. Run it before catslife_id_dyads.R and build_phenotype_file.R.
 source("config.R")
 suppressMessages({ library(dplyr); library(haven); library(readxl) })
 validate_paths("person_table")
@@ -16,14 +16,14 @@ sample_list <- read_excel(SAMPLE_LIST_FILE) %>%
     transmute(nidaid = as.character(nidaid), random_id = as.integer(random_id)) %>%
     distinct(nidaid, random_id)
 
-## Every sampled nidaid must be present in the admin file — fail loud, not silent NA.
+## Every sampled nidaid must be present in the admin file.
 missing <- setdiff(sample_list$nidaid, as.character(admin$nidaid))
 if (length(missing))
     stop("build_person_table: ", length(missing), " sample-list nidaid(s) absent from the admin file: ",
          paste(utils::head(missing, 10), collapse = ", "))
 
-## nsex (0=F,1=M) is the authoritative self-reported sex. Fail loud on an out-of-range
-## code rather than coercing to NA, so a malformed admin file stops here.
+## nsex (0=F,1=M) is the authoritative self-reported sex; an out-of-range code stops here
+## instead of becoming NA.
 bad_nsex <- setdiff(unique(admin$nsex), c(0, 1, NA))
 if (length(bad_nsex))
     stop("build_person_table: nsex value(s) outside the expected {0,1,NA} coding: ",
@@ -47,7 +47,7 @@ person <- admin %>%
         famtype,
         ZygGroup  = as.integer(ZygGroup)   # zygosity index (1=MZ); auto-classifies IBD duplicates
     ) %>%
-    ## attach random_id (NA for un-sampled persons — kept so dyads retain full families)
+    ## attach random_id (NA for un-sampled persons, who are kept so dyads see whole families)
     left_join(sample_list, by = "nidaid", relationship = "many-to-one") %>%
     group_by(pfamid) %>%
     mutate(household_composition = case_when(
@@ -60,7 +60,7 @@ person <- admin %>%
 if (anyNA(person$aid) || anyDuplicated(person$aid))
     stop("build_person_table: aid must be unique and non-NA after as.integer(aid)")
 if (anyNA(person$pfamid))
-    stop("build_person_table: pfamid has NA(s) — every person must have a family id")
+    stop("build_person_table: pfamid has NA(s); every person must have a family id")
 
 write_sav(person, CLEAN_ID_FILE)
 cat("build_person_table: wrote", CLEAN_ID_FILE, "-", nrow(person), "persons,",

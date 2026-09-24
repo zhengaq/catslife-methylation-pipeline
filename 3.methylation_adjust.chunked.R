@@ -24,7 +24,7 @@ suppressMessages({
     library(ExperimentHub); library(ewastools)
 })
 
-## one-line TSV writer (no trailing tab — avoids a phantom empty column on read-back)
+## one-line TSV writer (no trailing tab, which would read back as an empty column)
 wl <- function(vals, file, append = TRUE) cat(paste(vals, collapse = "\t"), "\n", file = file, sep = "", append = append)
 
 
@@ -47,10 +47,9 @@ cat("Done loading dasen values\n", date(), "\n")
 dasen.IDs <- as.matrix(colnames(dasen.values$b), ncol = 1); colnames(dasen.IDs) <- "Sample_Group"
 IDs <- merge(dasen.IDs, targets, sort = FALSE)
 cat("Has the ID key information been added to the Sample names, without sorting the sample names?\n")
-cat(all(dasen.IDs[, 1] == IDs[, 1]), "\n")
-if (all(dasen.IDs[, 1] != IDs[, 1])) {
-    cat("IDs don't match!!!\n", file = stderr()); quit(save = 'no')
-}
+ids.match <- identical(as.character(dasen.IDs[, 1]), as.character(IDs[, 1]))
+cat(ids.match, "\n")
+if (!ids.match) stop("stage 3: sample-sheet rows do not line up with the dasen beta columns")
 
 
 ########################################################################################################
@@ -99,9 +98,8 @@ MBmat.saliva <- b.saliva
 
 cat("\nStarting B-value residualization\n", date(), "\n\n")
 ### When both tissues are present their CpG rownames must match (fail loud); test.sites = the shared CpG set
-if (has_blood && has_saliva && !all(rownames(MBmat.blood) == rownames(MBmat.saliva))) {
-    cat("**** ROWNAMES DO NOT MATCH BETWEEN BLOOD AND SALIVA\nQUITTING NOW", date(), "\n"); quit(save = "no")
-}
+if (has_blood && has_saliva && !all(rownames(MBmat.blood) == rownames(MBmat.saliva)))
+    stop("stage 3: CpG rownames differ between the blood and saliva matrices")
 test.sites <- rownames(if (has_blood) MBmat.blood else MBmat.saliva)
 
 ### Optionally cap the per-CpG loop for speed (RESID_CPG_LIMIT=0 means all CpGs).
@@ -165,10 +163,9 @@ for (tissue in c("blood", "saliva")[c(has_blood, has_saliva)]) {
     d.IDs <- strip_x_prefix(d.IDs)   ### undo R's X-prefix on numeric-leading sample names
     IDs   <- merge(d.IDs, targetscsv, sort = FALSE)
     cat("Sample names matched to the sheet without reordering?\n")
-    cat(all(d.IDs[, 1] == IDs[, 1]), "\n")
-    if (any(d.IDs[, 1] != IDs[, 1])) {
-        cat("IDs don't match!!!\n", file = stderr()); quit(save = 'no')
-    }
+    ids.match <- identical(as.character(d.IDs[, 1]), as.character(IDs[, 1]))
+    cat(ids.match, "\n")
+    if (!ids.match) stop("stage 3: ", tissue, " residualized columns do not line up with the sample sheet")
 
     wl(c("CpG", colnames(d)), adj.file, append = FALSE)
     for (cpg in 1:nrow(d)) {

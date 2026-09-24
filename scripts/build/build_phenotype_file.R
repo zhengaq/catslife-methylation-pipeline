@@ -1,11 +1,11 @@
 #!/usr/bin/env Rscript
-### scripts/build/build_phenotype_file.R — build PHENOTYPE_FILE, bridging the array-ID world
-### (the sheet's PI Provided Subject ID = random_id) to the person-ID world (aid/pfamid)
-### via the random_id the person table carries (folded in from the sample list). One row
-### per sample with a Wave column (the "_<n>" suffix); Age is the admin LabAge (wave 2) or
-### LabAge1 (wave 1) per row. SIF is used only for Father/Mother + a sex cross-check, not
-### identity. Intentional DUPS pairs are retained (grouped + consistency-checked, not
-### dropped); fails loud (validate_phenotype_bridge) if a random_id doesn't resolve.
+### scripts/build/build_phenotype_file.R: build PHENOTYPE_FILE, linking array ids (the
+### sheet's PI Provided Subject ID = random_id) to person ids (aid/pfamid) through the
+### random_id the person table carries. One row per sample with a Wave column (from the
+### "_<n>" suffix); Age is the admin LabAge (wave 2) or LabAge1 (wave 1) for that row. The
+### SIF supplies only Father/Mother and a sex cross-check. Label corrections from
+### SAMPLE_SWAPS_FILE are applied first. Intentional DUPS pairs are kept and grouped.
+### validate_phenotype_bridge() stops the build if a random_id doesn't resolve.
 ###
 ### Run after: stage 1 (sample sheet), build_person_table.R, catslife_id_dyads.R, stage 3.
 source("config.R"); source("stage5/helpers.R")
@@ -14,53 +14,71 @@ suppressMessages({
 })
 validate_paths("phenotype_bridge")
 
-## Two sexes disagree only when both are known — NA-safe, so the deferred Sex_geno
-## slot stays inert until a genotype source is wired in.
+## Two sexes disagree only when both are known, so the empty Sex_geno column never
+## raises a flag.
 disagree <- function(a, b) !is.na(a) & !is.na(b) & a != b
 
-## ---- 1. Sample sheet: Subject_ID, DNA_Source, drop controls ------------------
+## 1. Sample sheet: Subject_ID, DNA_Source, drop controls ----
 sheet <- read_sample_sheet(SAMPLE_SHEET) %>%
     mutate(DNA_Source = canonicalize_dna_source(DNA_Source),
            Subject_ID = `PI Provided Subject ID`) %>%
     filter(DNA_Source != "Cell_Line", !grepl("^METHYL", Subject_ID))
 if (!"SIF_Sex" %in% names(sheet)) sheet$SIF_Sex <- NA_character_
 
-## ---- 2. DUPS: retain both aliquots, tag a shared DupGroupID -------------------
-## Intentional technical replicates — kept (not dropped) so their consistency can be
-## checked. Each member (canonical + "_D" re-run) shares DupGroupID = the canonical id.
+## 1b. Sample-identity corrections (SAMPLE_SWAPS_FILE) ----
+## Relabel swapped samples before any identity join. Subject_ID_sheet keeps the sheet's
+## label, which the vendor-keyed QC files (DUPS, PROBLEM_HISTORY) still refer to. The
+## sheet's SIF_Sex describes the labeled person, so it moves with the corrected label.
+swaps <- read_sample_swaps(SAMPLE_SWAPS_FILE)
+fix   <- apply_sample_swaps(sheet$Subject_ID, swaps)
+sheet <- sheet %>% mutate(Subject_ID_sheet = Subject_ID, Subject_ID = fix$subject_id,
+                          identity_action = fix$action)
+relabeled <- which(sheet$identity_action %in% "relabel")
+sheet$SIF_Sex[relabeled] <- sheet$SIF_Sex[match(sheet$Subject_ID[relabeled], sheet$Subject_ID_sheet)]
+pwalk(filter(sheet, !is.na(identity_action)) %>% select(Subject_ID_sheet, Subject_ID, identity_action),
+      function(Subject_ID_sheet, Subject_ID, identity_action)
+          cat("build_phenotype_file: identity", identity_action, Subject_ID_sheet,
+              if (identity_action == "relabel") paste("->", Subject_ID) else "", "\n"))
+excluded_subject_ids <- sheet$Subject_ID[sheet$identity_action %in% "exclude"]
+sheet <- filter(sheet, !identity_action %in% "exclude")
+
+## 2. DUPS: retain both aliquots, tag a shared DupGroupID ----
+## Intentional technical replicates, kept so their consistency can be checked. Both
+## members (canonical and "_D" re-run) get DupGroupID = the canonical id.
 dup_group <- if (file.exists(DUPS_FILE)) {
     dups <- read_csv(DUPS_FILE, col_types = cols(.default = "c"))
     tibble(Subject_ID = c(dups[["Subject ID 1"]], dups[["Subject ID 2"]]),
            DupGroupID = c(dups[["Subject ID 1"]], dups[["Subject ID 1"]])) %>%
         distinct(Subject_ID, .keep_all = TRUE)
 } else tibble(Subject_ID = character(), DupGroupID = character())
-sheet <- left_join(sheet, dup_group, by = "Subject_ID")
+sheet <- left_join(sheet, dup_group, by = c("Subject_ID_sheet" = "Subject_ID"))
 cat("build_phenotype_file: retained", sum(!is.na(sheet$DupGroupID)),
     "intentional-duplicate sample(s) in", n_distinct(sheet$DupGroupID, na.rm = TRUE), "group(s)\n")
 
-## ---- 3. PROBLEM_HISTORY: exclude subjects with a known unresolved issue -------
-excluded_subject_ids <- character()
+## 3. PROBLEM_HISTORY: exclude subjects with a known unresolved issue ----
 if (file.exists(PROBLEM_HISTORY_FILE)) {
     flagged <- read_excel(PROBLEM_HISTORY_FILE) %>%
         filter(tolower(trimws(`Does a problem remain at release?`)) %in% c("yes", "y"))
     if (nrow(flagged)) {
-        excluded_subject_ids <- flagged[["Subject ID"]]
         pwalk(list(flagged[["Subject ID"]], flagged[["Problem Description"]]),
               ~ cat("build_phenotype_file: excluding Subject_ID", .x, "-", .y, "\n"))
-        sheet <- filter(sheet, !Subject_ID %in% excluded_subject_ids)
+        drop <- sheet$Subject_ID_sheet %in% flagged[["Subject ID"]]
+        excluded_subject_ids <- c(excluded_subject_ids, sheet$Subject_ID[drop])
+        sheet <- sheet[!drop, ]
     }
 }
 
-## ---- Person table (read once; used by the IBD MZ-check and the crosswalk below) -
+## Person table (used by the IBD MZ check and the crosswalk below) ----
 person <- read_sav(CLEAN_ID_FILE) %>%
     mutate(aid = as.integer(aid), random_id = as.integer(random_id)) %>%
     filter(!is.na(random_id))                       # only sampled persons carry a random_id
 
-## ---- 4. IBD: flag (don't drop) cross-wave resamples and unexpected duplicates --
+## 4. IBD: flag cross-wave resamples and unexpected duplicates ----
 ## DUPLICATED=Yes & EXPECTED=No = a genetic duplicate not in DUPS_FILE. classify_ibd_pair()
 ## (config.R) splits these against the person table: "cross_wave" = one participant resampled
-## across waves (shared LongitudinalGroupID); "mz" = an MZ co-twin pair (same pfamid, ZygGroup=1,
-## identical by design) which is expected; "unexpected" = a likely swap/mislabel, warned for review.
+## across waves (shared LongitudinalGroupID); "mz" = an MZ co-twin pair (same pfamid,
+## ZygGroup=1), expected; "unexpected" = a likely swap/mislabel, reported for review.
+## No sample is dropped here.
 long_group <- tibble(Subject_ID = character(), LongitudinalGroupID = character())
 if (file.exists(IBD_FILE)) {
     id_map <- select(sheet, Sample_ID, Subject_ID)
@@ -85,19 +103,19 @@ if (file.exists(IBD_FILE)) {
 }
 sheet <- left_join(sheet, long_group, by = "Subject_ID")
 
-## ---- 5. Crosswalk: sheet random_id + Wave -> person table --------------------
-## The load-bearing join: subject_base_id() -> the array-facing random_id (and
-## subject_wave() -> the wave); the person table carries random_id, so this single join
-## reaches identity (aid), family (pfamid), sex (nsex) and the wave-2 age.
+## 5. Crosswalk: sheet random_id + Wave -> person table ----
+## subject_base_id() gives the array-facing random_id and subject_wave() the wave; the
+## person table carries random_id, so one join brings in identity (aid), family (pfamid),
+## sex (nsex) and both waves' ages.
 bridge <- sheet %>%
     mutate(random_id = subject_base_id(Subject_ID), Wave = subject_wave(Subject_ID)) %>%
     left_join(select(person, random_id, aid, pfamid, nsex, age, age_w1, famtype),
               by = "random_id", relationship = "many-to-one") %>%
     mutate(IndividualID = aid, FamilyID = pfamid)
 
-## ---- 6. SIF: Father/Mother + pedigree sex (not identity) ---------------------
-## SIF Individual is the vendor Subject_ID de-underscored, not the aid — identity is
-## never taken from here. Founder/parent rows carry Subject_ID = NA; drop them.
+## 6. SIF: Father/Mother + pedigree sex ----
+## SIF Individual is the vendor Subject_ID with underscores removed, not the aid, so the
+## SIF is not used for identity. Founder/parent rows carry Subject_ID = NA; drop them.
 sif <- read_excel(ID_KEY) %>%
     filter(!is.na(Subject_ID)) %>%
     mutate(Subject_ID = as.character(Subject_ID)) %>%
@@ -108,10 +126,10 @@ if (length(bad_sex))
     stop("build_phenotype_file: SIF Sex value(s) outside {1,2,NA} PED coding: ",
          paste(bad_sex, collapse = ", "))
 
-## ---- 7. Sex QC: genotype vs admin (primary) vs pedigree ----------------------
-## nsex is the primary source; Sex_geno is a deferred slot (NA). Disagreements are
-## flagged (not dropped) and written to sex_qc.csv, with the sheet's SIF_Sex as an
-## extra pedigree cross-check.
+## 7. Sex QC: genotype vs admin (primary) vs pedigree ----
+## nsex is the primary source; Sex_geno is reserved for a genotype-based call and is NA
+## for now. Disagreements are flagged, not dropped, and written to sex_qc.csv together
+## with the sheet's SIF_Sex as a further cross-check.
 bridge <- bridge %>% mutate(
     Sex       = case_when(nsex == 1 ~ "M", nsex == 0 ~ "F", TRUE ~ NA_character_),
     Sex_ped   = case_when(Sex_ped_num == 1 ~ "M", Sex_ped_num == 2 ~ "F", TRUE ~ NA_character_),
@@ -125,7 +143,7 @@ bridge %>%
 cat("build_phenotype_file: sex QC -", sum(bridge$Sex_flag, na.rm = TRUE),
     "sample(s) with an admin-vs-pedigree/genotype disagreement (flagged, not dropped); wrote sex_qc.csv\n")
 
-## ---- 8. DUPS consistency: paired aliquots must resolve to one person/sex ------
+## 8. DUPS consistency: paired aliquots must resolve to one person/sex ----
 dup_check <- bridge %>%
     filter(!is.na(DupGroupID)) %>%
     group_by(DupGroupID) %>%
@@ -137,7 +155,7 @@ bridge <- bridge %>%
 cat("build_phenotype_file: DUPS consistency -", sum(dup_check$discordant),
     "of", nrow(dup_check), "duplicate group(s) discordant on person/sex\n")
 
-## ---- 9. FamilyType/Zygosity from the dyad table (per-aid representative) ------
+## 9. FamilyType/Zygosity from the dyad table (per-aid representative) ----
 dyads <- read_csv(DYADS_FILE, show_col_types = FALSE)
 aid_famtype <- dyads %>%
     pivot_longer(c(aid.x, aid.y), values_to = "aid") %>%
@@ -148,7 +166,7 @@ bridge <- bridge %>%
     left_join(aid_famtype, by = c("IndividualID" = "aid"), relationship = "many-to-one") %>%
     mutate(Zygosity = zygosity_from_famtype(FamilyType))
 
-## ---- 10. Cell proportions (stage 3 output) -----------------------------------
+## 10. Cell proportions (stage 3 output) ----
 if (file.exists(CELL_PROPORTIONS_FILE)) {
     non_cell <- c("Sample_Group", "DNA Source", "Population", "SIF_Sex", "Core_Lab_ID",
                   "Study_ID", "Family_Relationship", "Family", "DNA_Source", "Array")
@@ -158,13 +176,13 @@ if (file.exists(CELL_PROPORTIONS_FILE)) {
         rename_with(~ paste0("cell_", .x), all_of(cell_cols)) %>%
         select(Sample_Group, starts_with("cell_"))
     bridge <- left_join(bridge, cellprop, by = "Sample_Group", relationship = "many-to-one")
-} else cat("build_phenotype_file: CELL_PROPORTIONS_FILE not found — no cell covariates\n")
+} else cat("build_phenotype_file: CELL_PROPORTIONS_FILE not found; no cell covariates\n")
 
-## ---- 11. Assemble, validate, write -------------------------------------------
+## 11. Assemble, validate, write ----
 out <- bridge %>% transmute(
     Sample = Sample_Group, Subject_ID, IndividualID, FamilyID, Wave, FamilyType, Zygosity,
     DNA_Source, Age = if_else(Wave == 2, age, age_w1),   # LabAge (wave-2) / LabAge1 (wave-1)
-    Sex, Sex_geno, Sex_flag, Sex_flag_manual = is_sex_problem(Subject_ID),
+    Sex, Sex_geno, Sex_flag, Identity_flag = identity_action %in% "flag", Subject_ID_sheet,
     DupGroupID, Dup_flag, Sample_Plate,
     LongitudinalGroupID = coalesce(LongitudinalGroupID, Subject_ID))
 cell_out <- select(bridge, starts_with("cell_"))

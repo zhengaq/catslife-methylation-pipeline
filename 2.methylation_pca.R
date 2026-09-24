@@ -29,7 +29,7 @@ cat(all(dasen.IDs[, 1] == IDs[, 1]), "\n")
 ########################################################################################################
 if (PCA_SUBSET) {
     ## Most-variable CpGs: leading PCs are driven by the highest-variance probes, so this is the
-    ## standard input for a structure/QC PCA (and memory-safe vs all ~800k). See README.runtime.md.
+    ## standard input for a structure/QC PCA, and far lighter than all ~800k. See the README.
     vary     <- matrixStats::rowVars(dasen.values$M)
     keep.cpg <- rownames(dasen.values$M)[order(vary, decreasing = TRUE)[seq_len(min(PCA_NCPG, nrow(dasen.values$M)))]]
     Mpca     <- t(dasen.values$M[keep.cpg, ])

@@ -1,10 +1,9 @@
-### stage5/longitudinal.R — per-clock within-person wave-1 ∩ wave-2 measurement
-### stability among LongitudinalGroupIDs (IBD-flagged cross-wave resamples) sampled
-### in BOTH waves within a tissue: cross-wave correlation, mean Δ epigenetic vs
-### chronological age, and their ratio. Same person years apart, so this is
-### biological stability, distinct from reliability.R's same-DNA technical
-### replicates. Descriptive only. No both-wave overlap -> an empty, well-formed
-### table (not an error). Writes output/tables/clock_wave_overlap.csv.
+### stage5/longitudinal.R: per-clock within-person stability across waves, among
+### LongitudinalGroupIDs (IBD-flagged cross-wave resamples) sampled in both waves
+### within a tissue: cross-wave correlation, mean change in epigenetic vs
+### chronological age, and their ratio. These are the same person years apart, so
+### this describes biological stability; reliability.R covers same-DNA replicates.
+### Writes TABLES_DIR/clock_wave_overlap.csv, with zero rows when no one has both waves.
 source("config.R"); source("stage5/helpers.R")
 
 OUT      <- file.path(TABLES_DIR, "clock_wave_overlap.csv")
@@ -13,7 +12,7 @@ OUT_COLS <- c("clock", "tissue", "n_pairs", "n_individuals", "retest_r",
 
 m  <- read.csv(file.path(DERIVED_DIR, "mAge_clocks.csv"))
 ph <- read.csv(PHENOTYPE_FILE)
-clock_cols <- intersect(LME_CLOCKS, names(m))
+clock_cols <- intersect(CLOCK_COLUMNS, names(m))
 
 write_overlap <- function(df) {
   write.csv(df, OUT, row.names = FALSE)

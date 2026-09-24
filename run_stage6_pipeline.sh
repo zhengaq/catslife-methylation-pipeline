@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 #
-# run_stage6_pipeline.sh — run the stage-6 sensitivity & validity checks with checkpoint/resume:
+# run_stage6_pipeline.sh: run the stage-6 sensitivity & validity checks with checkpoint/resume:
 #   1. validity  stage6/validity_clocks.R   (clock-table validity/sensitivity; needs stage-5 mAge_clocks.csv)
 #   2. pca       stage6/pca_sex_batch.R      (sex-chromosome / batch-structure PCA; needs stage-1 betas + minfi)
 #
 # Checkpoint/resume: each check that finishes writes logs/.ckpt/<check>.done. A re-run skips any
 # check whose marker exists, so after a failure you just launch again and it resumes at the failed
-# check. Unlike the stage-5 pipeline the checks are INDEPENDENT and not fail-fast: a failed check is
-# logged and the pipeline moves on (only successful checks checkpoint), so a broken dependency for
-# one check never blocks the other. Each check is streamed to the console and to
-# logs/stage6_pipeline_<check>.log; the run exits non-zero if any check failed.
+# check. The checks are independent, so unlike the stage-5 pipeline a failed check is logged and
+# the next one still runs; only successful checks are checkpointed. Each check is streamed to the
+# console and to logs/stage6_pipeline_<check>.log; the run exits non-zero if any check failed.
 #
-# Paths (inputs/outputs) are NOT set here; each check resolves them through config.R / config.site.R
-# and fails loud on its own if an input is missing.
+# Input and output paths come from config.R / config.site.R; each check stops if an input is missing.
 #
 set -uo pipefail
 cd "$(dirname "$0")"
@@ -20,7 +18,7 @@ RSCRIPT="${RSCRIPT:-Rscript}"   # overridable (e.g. a specific Rscript, or a stu
 
 usage() {
   cat >&2 <<'USAGE'
-run_stage6_pipeline.sh — run the stage-6 sensitivity & validity checks, with per-check
+run_stage6_pipeline.sh: run the stage-6 sensitivity & validity checks, with per-check
 checkpoint/resume and logging.
 
   ./run_stage6_pipeline.sh            run/resume: skip completed checks, run the rest
@@ -91,13 +89,13 @@ for s in "${STEPS[@]}"; do
   fi
   echo "[$(ts)] run   $name  ($script)"
   log="$LOGDIR/stage6_pipeline_${name}.log"
-  # process substitution (not a pipe) so $? is the Rscript exit code, not tee's
+  # process substitution instead of a pipe, so $? is Rscript's exit code
   if "$RSCRIPT" "$script" > >(tee "$log") 2>&1; then
     touch "$CKPT/$name.done"
     echo "[$(ts)] ok    $name"
   else
     rc=$?
-    echo "[$(ts)] FAIL  $name  (exit $rc) — see $log. Fix the cause and re-run to resume here." >&2
+    echo "[$(ts)] FAIL  $name  (exit $rc); see $log. Fix the cause and re-run to resume here." >&2
     failed=$((failed + 1))
   fi
 done

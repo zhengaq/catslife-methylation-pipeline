@@ -1,8 +1,7 @@
-### config.R — central configuration for the CATSLife methylation pipeline,
-### sourced by every stage. describe_paths() and
-### validate_paths() show + check the resolved mapping.
+### config.R: central configuration for the CATSLife methylation pipeline, sourced by
+### every stage. describe_paths() prints the resolved paths; validate_paths() checks them.
 
-## ---- Project root + site profile ------------------------------------------
+## Project root + site profile ----
 .find_root <- function() {
     r <- Sys.getenv("METHYL_PROJECT_DIR", "")
     if (nzchar(r)) return(normalizePath(r, mustWork = FALSE))
@@ -14,34 +13,31 @@
 .site <- Sys.getenv("METHYL_SITE_CONFIG", file.path(.root, "config.site.R"))
 if (file.exists(.site)) { message("config: loading site profile ", .site); source(.site, local = TRUE) }
 
-## ---- Run mode -------------------------------------------------------------
+## Run mode ----
 ## ARRAY_VERSION: "v2" (EPIC v2.0, default) or "v1" (legacy EPIC v1). Env: METHYL_ARRAY_VERSION=v1
 ARRAY_VERSION <- match.arg(Sys.getenv("METHYL_ARRAY_VERSION", "v2"), c("v1", "v2"))
 
-## SAVE_INTERMEDIATES=FALSE skips stage 1's optional .RDat checkpoints (raw/detP/noob/dasen and
-## the noobflt resume bundle; only dasen_betas.RDat is read downstream), saving tens of GB.
-## F_NOOBFLT is the resume point: with it saved, METHYL_RESUME=TRUE re-runs only dasen. Default TRUE.
+## SAVE_INTERMEDIATES=FALSE skips stage 1's optional .RDat checkpoints (raw/detP/noob/noobflt/
+## dasen; only dasen_betas.RDat is read downstream), saving tens of GB but disabling resume.
 SAVE_INTERMEDIATES <- !(toupper(Sys.getenv("METHYL_SAVE_INTERMEDIATES", "TRUE")) %in% c("FALSE", "0", "NO"))
 
-## METHYL_RESUME=TRUE makes stage 1 reload the saved raw/detP checkpoints (from a prior
-## SAVE_INTERMEDIATES=TRUE run) instead of re-reading IDATs / recomputing detP — handy for
-## resuming after a crash without repeating the slow read. Default FALSE (fresh run).
+## METHYL_RESUME=TRUE makes stage 1 start from the latest checkpoint a SAVE_INTERMEDIATES=TRUE run
+## left behind: F_DASEN (only beta/M extraction remains), else F_NOOBFLT (re-run dasen only), else
+## F_RAW/F_DETP (skip the IDAT read / detection p-values). Default FALSE (fresh run).
 RESUME <- toupper(Sys.getenv("METHYL_RESUME", "FALSE")) %in% c("TRUE", "1", "YES")
 
-## DASEN_STREAM=TRUE (default) makes stage 1 normalize with the streaming dasen_stream() below
-## (memory-safe, output identical to wateRmelon::dasen — see its header). METHYL_DASEN_STREAM=FALSE
-## restores stock wateRmelon::dasen, which is cross-sample and needs >100GB at cohort scale — for
-## A/B verification on small data only, never for the full delivery.
+## DASEN_STREAM=TRUE (default) normalizes with dasen_stream() below, which gives the same output
+## as wateRmelon::dasen at a fraction of the memory. METHYL_DASEN_STREAM=FALSE uses stock
+## wateRmelon::dasen, which needs >100GB at cohort scale; use it only on small data.
 DASEN_STREAM <- !(toupper(Sys.getenv("METHYL_DASEN_STREAM", "TRUE")) %in% c("FALSE", "0", "NO"))
 
-## ---- Directories ----------------------------------------------------------
+## Directories ----
 PROJECT_DIR  <- Sys.getenv("METHYL_PROJECT_DIR",  .root)
 DATA_DIR     <- Sys.getenv("METHYL_DATA_DIR",     file.path(PROJECT_DIR, "data"))
 ANALYSIS_DIR <- Sys.getenv("METHYL_ANALYSIS_DIR", file.path(PROJECT_DIR, "output"))
-## Output sub-trees. Each defaults to ANALYSIS_DIR (the historical flat layout), so a single
-## METHYL_ANALYSIS_DIR still works unchanged; a site profile can point each at its own directory
-## to separate analysis-ready data (derived), regenerable stage 1-4 artifacts (intermediate), and
-## findings (results). REPORT_DIR/TABLES_DIR/SENS_DIR are subfolders of results.
+## Output sub-trees. Each defaults to ANALYSIS_DIR (one flat directory); a site profile can point
+## each at its own directory to separate analysis-ready data (derived), regenerable stage 1-4
+## artifacts (intermediate), and findings (results). REPORT_DIR/TABLES_DIR/SENS_DIR sit under results.
 DERIVED_DIR      <- Sys.getenv("METHYL_DERIVED_DIR",      ANALYSIS_DIR)
 INTERMEDIATE_DIR <- Sys.getenv("METHYL_INTERMEDIATE_DIR", ANALYSIS_DIR)
 RESULTS_DIR      <- Sys.getenv("METHYL_RESULTS_DIR",      ANALYSIS_DIR)
@@ -52,7 +48,7 @@ SENS_DIR         <- file.path(RESULTS_DIR, "sensitivity")
 for (.d in c(DERIVED_DIR, INTERMEDIATE_DIR, REPORT_DIR, TABLES_DIR, SENS_DIR))
     dir.create(.d, recursive = TRUE, showWarnings = FALSE)
 
-## ---- Inputs ---------------------------------------------------------------
+## Inputs ----
 ## IDATs live one directory per Sentrix barcode under IDAT_DIR
 ## (Released_Data/Data/<barcode>/<barcode>_R##C##_{Grn,Red}.idat). See load_targets().
 IDAT_DIR        <- Sys.getenv("METHYL_IDAT_DIR",     DATA_DIR)
@@ -61,38 +57,35 @@ SAMPLE_SHEET    <- Sys.getenv("METHYL_SAMPLE_SHEET", file.path(DATA_DIR, "sample
 ## Used for Father/Mother + sex cross-check
 ID_KEY          <- Sys.getenv("METHYL_ID_KEY",       file.path(DATA_DIR, "SIF.xlsx"))
 
-## ---- Intermediate outputs -------------------------------------------------
+## Intermediate outputs ----
 F_RAW     <- file.path(INTERMEDIATE_DIR, "methylation_data_raw.RDat")
 F_DETP    <- file.path(INTERMEDIATE_DIR, "methylation_data_detP.RDat")
-F_RGFLT   <- file.path(INTERMEDIATE_DIR, "methylation_data_rgSetflt.RDat")
 F_NOOB    <- file.path(INTERMEDIATE_DIR, "methylation_data_noob.RDat")
 F_NOOBFLT <- file.path(INTERMEDIATE_DIR, "methylation_data_noobflt.RDat")
 F_DASEN   <- file.path(INTERMEDIATE_DIR, "methylation_data_dasen.RDat")
 F_DASENB  <- file.path(INTERMEDIATE_DIR, "dasen_betas.RDat")
 
-## ---- QC parameters --------------------------------------------------------
+## QC parameters ----
 DETP_THRESHOLD     <- 0.05  # detP < this  => probe call is "detected"
 SAMPLE_MISSINGNESS <- 0.01  # drop sample if > this fraction of probes undetected
 PROBE_MISSINGNESS  <- 0.01  # drop probe  if > this fraction of samples undetected
 
-## ---- Stage 2 (PCA) --------------------------------------------------------
+## Stage 2 (PCA) ----
 ## Default: PCA the top PCA_NCPG most-variable CpGs (standard for a structure/QC PCA;
-## see README.runtime.md). METHYL_PCA_SUBSET=FALSE PCAs all CpGs (heavy at cohort scale).
+## see the README). METHYL_PCA_SUBSET=FALSE PCAs all CpGs (heavy at cohort scale).
 PCA_SUBSET <- toupper(Sys.getenv("METHYL_PCA_SUBSET", "TRUE")) %in% c("TRUE","1","YES")
 PCA_NCPG   <- 5000
 
-## ---- Stage 3/4 (chunking) -------------------------------------------------
+## Stage 3/4 (chunking) ----
 NPARTS <- as.integer(Sys.getenv("METHYL_NPARTS", "5"))  # CpG chunks for stages 3 & 4
 ## 0 = residualize all CpGs; >0 caps the per-CpG residualization loop (a quick partial run).
 RESID_CPG_LIMIT <- as.integer(Sys.getenv("METHYL_RESID_CPG_LIMIT", "0"))
-## ---- Stage 5 (clocks) inputs ----------------------------------------------
+
+## Stage 5 (clocks) inputs ----
 ## Min fraction of a reference clock's CpGs that must be present in the beta matrix
 ## before trusting clock output (population.R::assert_clock_cpg_coverage).
 CLOCK_CPG_COVERAGE_MIN <- as.numeric(Sys.getenv("METHYL_CLOCK_CPG_COVERAGE_MIN", "0.90"))
-BETAS_FILE     <- Sys.getenv("METHYL_BETAS_FILE",     file.path(DATA_DIR, "BetasFile.csv"))
 PHENOTYPE_FILE <- Sys.getenv("METHYL_PHENOTYPE_FILE", file.path(DATA_DIR, "PhenotypeFile.csv"))
-## HORVATH_CPGS: declared for the fallback monolith only; no stage5/ module reads it.
-HORVATH_CPGS   <- Sys.getenv("METHYL_HORVATH_CPGS",   file.path(DATA_DIR, "HorvathCpGsFile.csv"))
 ## Stage 4's cell/plate-adjusted betas; read by stage5/population.R's adjusted clock pass.
 ADJUSTED_BETAS_FILE <- Sys.getenv("METHYL_ADJUSTED_BETAS_FILE",
                                   file.path(INTERMEDIATE_DIR, "B.adjusted.platebatches.txt"))
@@ -101,32 +94,29 @@ CELL_PROPORTIONS_FILE <- Sys.getenv("METHYL_CELL_PROPORTIONS_FILE",
                                     file.path(DERIVED_DIR, "cell_proportions.blood.saliva.txt"))
 
 ## QC inputs (keyed on Subject_ID), applied in build_phenotype_file.R:
-##  - DUPS_FILE: intentional duplicate pairs; BOTH aliquots are retained and tagged with a
-##    shared DupGroupID (a consistency check; stage5/reliability.R quantifies it), not dropped.
+##  - DUPS_FILE: intentional duplicate pairs; both aliquots are retained and tagged with a
+##    shared DupGroupID, whose agreement stage5/reliability.R quantifies.
 ##  - PROBLEM_HISTORY_FILE (xlsx): subjects with "problem remains at release" = yes excluded.
 ##  - IBD_FILE: PLINK --genome; DUPLICATED=Yes & EXPECTED=No rows flagged (not dropped).
 DUPS_FILE            <- Sys.getenv("METHYL_DUPS_FILE",            file.path(DATA_DIR, "DUPS.csv"))
 PROBLEM_HISTORY_FILE <- Sys.getenv("METHYL_PROBLEM_HISTORY_FILE", file.path(DATA_DIR, "Project_Problem_History.xlsx"))
 IBD_FILE             <- Sys.getenv("METHYL_IBD_FILE",             file.path(DATA_DIR, "IBD_results.csv"))
+## SAMPLE_SWAPS_FILE (label corrections) is defined with its helpers below.
 
-## ---- CATSLife person table ------------------------------------------------
+## CATSLife person table ----
 ## ADMIN_FILE: the individual-admin .sav (aid/pfamid/nsex/famtype/adopted/LabAge/nidaid/...).
 ## SAMPLE_LIST_FILE: the per-wave array<->person crosswalk (random_id <-> nidaid + CATSLife
 ## wave). build_person_table.R merges the two (on nidaid) into CLEAN_ID_FILE, so the sheet's
 ## PI Provided Subject ID (= random_id) reaches the person world (aid/pfamid).
 ADMIN_FILE       <- Sys.getenv("METHYL_ADMIN_FILE",       file.path(DATA_DIR, "individual_admin.sav"))
 SAMPLE_LIST_FILE <- Sys.getenv("METHYL_SAMPLE_LIST_FILE", file.path(DATA_DIR, "sample_list.xlsx"))
+## CLEAN_ID_FILE is written by build_person_table.R; DYADS_FILE by catslife_id_dyads.R.
+CLEAN_ID_FILE    <- Sys.getenv("METHYL_CLEAN_ID_FILE",    file.path(DATA_DIR, "CATSLife_pseudo_id.sav"))
+DYADS_FILE       <- Sys.getenv("METHYL_DYADS_FILE",       file.path(DERIVED_DIR, "catslife_dyads.csv"))
 
-## ---- Additional-analysis inputs (run_additional_analysis.R) ----------------
-## CLEAN_ID_FILE is produced by build_person_table.R.
-CLEAN_ID_FILE   <- Sys.getenv("METHYL_CLEAN_ID_FILE",   file.path(DATA_DIR, "CATSLife_pseudo_id.sav"))
-DYADS_FILE      <- Sys.getenv("METHYL_DYADS_FILE",      file.path(DERIVED_DIR, "catslife_dyads.csv"))
-TWIN_PHENO_FILE <- Sys.getenv("METHYL_TWIN_PHENO_FILE", file.path(ANALYSIS_DIR, "synth_twin_pheno.sav"))
-TWIN_RS_FILE    <- Sys.getenv("METHYL_TWIN_RS_FILE",    file.path(ANALYSIS_DIR, "synth_twin_rs.xlsx"))
-
-## ---- Vocabulary canonicalization --------------------------------------------
-## Canonicalize tissue names ("Buffy Coat" -> "Buffy_Coat") once as the sample sheet
-## enters memory, so downstream sees one form. Fails loud on an unrecognized value.
+## Vocabulary canonicalization ----
+## Canonicalize tissue names ("Buffy Coat" -> "Buffy_Coat") as the sample sheet is read,
+## so downstream code sees one form. Stops on an unrecognized value.
 DNA_SOURCE_MAP <- c("Buffy Coat" = "Buffy_Coat", "Buffy_Coat" = "Buffy_Coat",
                      "Cell Line"  = "Cell_Line",  "Cell_Line"  = "Cell_Line",
                      "PBMC" = "PBMC", "Saliva" = "Saliva")
@@ -148,9 +138,9 @@ strip_x_prefix <- function(x) sub("^X(?=[0-9])", "", x, perl = TRUE)
 strip_wave_suffix <- function(x) sub("_[0-9]+$", "", x)
 
 ## Parse a Subject_ID to its integer base key (the array-facing random_id): strip the
-## dup-aliquot "D" marker (aliquots are retained per the DUPS consistency check, so both
-## members resolve to the same person) and the wave suffix, then require a pure-integer
-## residue — fail loud otherwise (e.g. a control) rather than coercing to NA.
+## dup-aliquot "D" marker (so both members of a duplicate pair resolve to the same person)
+## and the wave suffix, then require a pure-integer residue. Anything else (e.g. a control)
+## is an error instead of a silent NA.
 subject_base_id <- function(x) {
     base <- strip_wave_suffix(sub("_[0-9]*D$", "", x))
     bad  <- !grepl("^[0-9]+$", base)
@@ -181,20 +171,64 @@ classify_ibd_pair <- function(s1, s2, person) {
     ifelse(same_base, "cross_wave", ifelse(is_mz, "mz", "unexpected"))
 }
 
-## ---- Curated sex-problem exclusion -----------------------------------------
-## Base random_ids of individuals with a manually confirmed sex problem (genotype-vs-report
-## mismatch), matched at the person level so every sample/wave is covered. Override the list via
-## METHYL_SEX_PROBLEM_IDS (comma/space-separated). When EXCLUDE_SEX_PROBLEM is TRUE (default) their
-## epigenetic clocks are NA-filled in stage 5 (the row + ids are kept and flagged).
-SEX_PROBLEM_RANDOM_IDS <- local({
-    v <- Sys.getenv("METHYL_SEX_PROBLEM_IDS", "")
-    if (nzchar(v)) as.integer(strsplit(trimws(v), "[,; ]+")[[1]]) else c(16419L, 2810L, 17285L, 15821L)
-})
-EXCLUDE_SEX_PROBLEM <- !(toupper(Sys.getenv("METHYL_EXCLUDE_SEX_PROBLEM", "TRUE")) %in% c("FALSE", "0", "NO"))
-## TRUE for a Subject_ID whose person (base random_id) is on the curated list (NA-safe).
-is_sex_problem <- function(subject_id) {
-    base <- suppressWarnings(as.integer(strip_wave_suffix(sub("_[0-9]*D$", "", subject_id))))
-    !is.na(base) & base %in% SEX_PROBLEM_RANDOM_IDS
+## Sample-identity corrections ----
+## SAMPLE_SWAPS_FILE lists sample-sheet labels (PI Provided Subject ID) found to be wrong, in
+## columns "Incorrect Random ID" and "Correct Random ID" (a swap is two rows, one per sample).
+## Each row is one of:
+##   relabel: the sample labeled <incorrect> is really <correct>;
+##   exclude: <correct> is UNKNOWN_RANDOM_ID (the sample's person is unknown); the sample is dropped;
+##   flag:    <incorrect> == <correct> (identity doubtful); the sample is kept with Identity_flag,
+##            and its clocks are NA-filled (clock_excluded) while EXCLUDE_IDENTITY_FLAGGED is TRUE.
+## A cohort with no corrections supplies the file with its header only.
+SAMPLE_SWAPS_FILE <- Sys.getenv("METHYL_SAMPLE_SWAPS_FILE", file.path(DATA_DIR, "sample_swaps.csv"))
+UNKNOWN_RANDOM_ID <- 99999L
+EXCLUDE_IDENTITY_FLAGGED <- !(toupper(Sys.getenv("METHYL_EXCLUDE_IDENTITY_FLAGGED", "TRUE")) %in% c("FALSE", "0", "NO"))
+
+## Read SAMPLE_SWAPS_FILE into data.frame(from, to, action, notes). Header names are
+## whitespace-trimmed; blank rows are ignored.
+read_sample_swaps <- function(path = SAMPLE_SWAPS_FILE) {
+    s <- read.csv(path, check.names = FALSE, colClasses = "character", na.strings = character(0))
+    names(s) <- trimws(names(s))
+    need <- c("Incorrect Random ID", "Correct Random ID")
+    if (!all(need %in% names(s)))
+        stop("read_sample_swaps: ", path, " needs columns ", paste0('"', need, '"', collapse = " and "))
+    from  <- trimws(s[["Incorrect Random ID"]]); to <- trimws(s[["Correct Random ID"]])
+    notes <- if ("Notes" %in% names(s)) trimws(s[["Notes"]]) else rep("", length(from))
+    keep  <- nzchar(from) | nzchar(to)
+    from  <- from[keep]; to <- to[keep]; notes <- notes[keep]
+    if (any(!nzchar(from) | !nzchar(to)))
+        stop("read_sample_swaps: a row gives only one of the incorrect/correct ids")
+    if (anyDuplicated(from))
+        stop("read_sample_swaps: id(s) listed more than once as incorrect: ",
+             paste(unique(from[duplicated(from)]), collapse = ", "))
+    action <- ifelse(from == to, "flag",
+                     ifelse(strip_wave_suffix(to) == as.character(UNKNOWN_RANDOM_ID), "exclude", "relabel"))
+    if (anyDuplicated(to[action == "relabel"]))
+        stop("read_sample_swaps: two samples relabeled to the same id")
+    data.frame(from = from, to = to, action = action, notes = notes, stringsAsFactors = FALSE)
+}
+
+## Apply read_sample_swaps() output to the sample sheet's labels `sid`. Returns
+## list(subject_id = corrected labels, action = per-sample action or NA). Every listed label
+## must occur exactly once on the sheet. A duplicate-aliquot label ("<id>D") of a listed id
+## stops the build, because the file does not say whether the aliquot needs the same correction.
+apply_sample_swaps <- function(sid, swaps) {
+    n <- vapply(swaps$from, function(f) sum(sid == f, na.rm = TRUE), integer(1))
+    if (any(n != 1))
+        stop("apply_sample_swaps: listed id(s) not found exactly once on the sample sheet: ",
+             paste0(swaps$from[n != 1], " (", n[n != 1], "x)", collapse = ", "))
+    aliquot <- sid[!sid %in% swaps$from & sub("_?D$", "", sid) %in% swaps$from]
+    if (length(aliquot))
+        stop("apply_sample_swaps: duplicate aliquot(s) of a listed id; list them in the swaps file too: ",
+             paste(aliquot, collapse = ", "))
+    i      <- match(sid, swaps$from)
+    action <- swaps$action[i]
+    out    <- ifelse(action %in% "relabel", swaps$to[i], sid)
+    clash  <- intersect(out[duplicated(out)], swaps$to[swaps$action == "relabel"])
+    if (length(clash))
+        stop("apply_sample_swaps: relabeling leaves more than one sample labeled ",
+             paste(clash, collapse = ", "), "; is the other half of a swap missing?")
+    list(subject_id = out, action = action)
 }
 
 ## EPIC v2 gives some replicate probes an id suffix ("cg#######_TC21"); clock and
@@ -214,7 +248,7 @@ canonicalize_v2_probe_ids <- function(betas, array_version = ARRAY_VERSION) {
     betas
 }
 
-## ---- Helpers --------------------------------------------------------------
+## Helpers ----
 ## Load an .RDat holding a single object, returning it regardless of its name.
 load_one <- function(path) {
     e  <- new.env(parent = emptyenv())
@@ -243,11 +277,10 @@ detectionP_chunked <- function(rgSet, chunk = as.integer(Sys.getenv("METHYL_DETP
 }
 
 ## preprocessNoob in sample-batches. noob (dyeMethod "single", the default) is per-sample, so
-## processing sample-subsets and reassembling is exact. Preallocate the Meth/Unmeth matrices and
-## fill column-blocks in place (no cbind double-hold), so peak stays ~= one full MethylSet (~25GB
-## + the input) instead of the >70GB an all-at-once call needs at ~1600 samples. NOTE: dasen is
-## cross-sample, so it is NOT chunkable by sample the way noob is — but it IS streamable; see
-## dasen_stream() below for the memory-safe equivalent. Batch via METHYL_NOOB_CHUNK.
+## processing sample-subsets and reassembling is exact. The Meth/Unmeth matrices are preallocated
+## and filled in place, so peak memory stays near one full MethylSet (~25GB plus the input) where
+## an all-at-once call needs >70GB at ~1600 samples. Batch size via METHYL_NOOB_CHUNK. (dasen is
+## cross-sample and cannot be batched this way; dasen_stream() below streams it instead.)
 preprocessNoob_chunked <- function(rgSet, chunk = as.integer(Sys.getenv("METHYL_NOOB_CHUNK", "200"))) {
     n <- ncol(rgSet)
     if (is.na(chunk) || chunk < 1L || chunk >= n) return(minfi::preprocessNoob(rgSet, verbose = TRUE))
@@ -271,19 +304,17 @@ preprocessNoob_chunked <- function(rgSet, chunk = as.integer(Sys.getenv("METHYL_
                      preprocessMethod = pmeth)
 }
 
-## Streaming/low-memory dasen — a drop-in for wateRmelon::dasen(MethylSet) whose output is
-## IDENTICAL to stock (verified to machine precision, beta max|diff| ~3e-16; guarded by
-## test/test_dasen_stream.R) but whose peak is ~40-60GB instead of the >100GB stock needs at
-## cohort scale (1642 samples). Stock's memory blows up inside limma::normalizeQuantiles, which
-## holds the input submatrix PLUS a full sorted copy PLUS a full rank matrix. Quantile
-## normalization needs none of those: build the reference by streaming (pass 1), then map each
-## column onto it in place (pass 2). See methylation/troubleshoot/dasen-memory-and-normalization.md.
+## Streaming dasen: a drop-in for wateRmelon::dasen(MethylSet) with the same output to machine
+## precision, peaking at ~40-60GB where stock dasen needs >100GB at ~1600 samples. Stock memory
+## goes to limma::normalizeQuantiles, which holds the input submatrix, a full sorted copy and a
+## full rank matrix at once. Quantile normalization needs none of them: build the reference
+## distribution one column at a time (pass 1), then map each column onto it in place (pass 2).
 ##
-## qn_stream: limma::normalizeQuantiles(A, ties=TRUE), streamed. refcols selects which columns
-## define the reference distribution (all columns = cohort average = stock default; a subset =
-## wave-1 anchor). Every column is still mapped onto that reference. The apply step is
-## rank()+approx() interpolation (ties.method="average"), matching limma's ties=TRUE path exactly
-## — naive sorted-position assignment would NOT reproduce stock.
+## qn_stream: limma::normalizeQuantiles(A, ties=TRUE), streamed. refcols selects the columns that
+## define the reference distribution (all columns = cohort average, the stock behavior; a subset,
+## e.g. wave 1, anchors the reference on it). Every column is mapped onto that reference. Ties are
+## resolved with rank() + approx() interpolation (ties.method="average"), as limma's ties=TRUE
+## path does; assigning by sorted position would give different values on tied data.
 qn_stream <- function(A, refcols) {
     n1 <- nrow(A); i <- (0:(n1 - 1)) / (n1 - 1)
     acc <- numeric(n1)
@@ -296,13 +327,11 @@ qn_stream <- function(A, refcols) {
     A
 }
 
-## dfsfit: per-sample background offset applied to Type I probes, plus dfsfit's optional
-## cross-sample Sentrix row/col (roco) lm smoothing of the per-sample offset scalars. dfs2() gives
-## one scalar per sample (streamable); the lm runs over that length-n vector, so it is cheap and
-## kept exactly as stock. roco is extracted the same way stock dasen extracts it; the lm is wrapped
-## in try() so a degenerate position model (e.g. non-Sentrix colnames) skips smoothing rather than
-## erroring — which is what stock effectively does on such data too. wateRmelon:::dfs2 is the same
-## internal stock dasen calls, so the background offset stays byte-for-byte faithful.
+## dfsfit: per-sample background offset applied to Type I probes, optionally smoothed across
+## samples by an lm on Sentrix row/column (roco). wateRmelon:::dfs2 (the internal stock dasen
+## uses) gives one scalar per sample, so the lm runs over a length-n vector and is cheap. roco is
+## parsed as stock dasen parses it. If the position model cannot be fit (e.g. colnames without a
+## Sentrix position), smoothing is skipped with a message, as stock dasen effectively does.
 dfsfit_stream <- function(mn, onetwo, roco) {
     mdf <- vapply(seq_len(ncol(mn)), function(j) wateRmelon:::dfs2(mn[, j], onetwo), numeric(1))
     if (!is.null(roco)) {
@@ -316,14 +345,12 @@ dfsfit_stream <- function(mn, onetwo, roco) {
     mn
 }
 
-## dasen_stream: dfsfit (roco on Meth, none on Unmeth) then quantile-normalize each channel x
-## probe-type. reference = NULL => cohort average (all samples; == stock default). To use a wave-1
-## anchor instead, pass
-## reference = <the wave-1 columns> (integer indices or a logical mask) — the reference is then
-## estimated from those columns while every sample is still mapped onto it. Returns a minfi
-## MethylSet; downstream getBeta()/getM()/betas() use offset 100 by default, matching dasen's
-## default fudge=100 (this is why the returned MethylSet reproduces stock betas without applying
-## fudge here). wateRmelon:::got is the same design-type accessor stock dasen uses.
+## dasen_stream: dfsfit (roco on Meth, none on Unmeth), then quantile-normalize each channel x
+## probe type. reference = NULL uses the cohort average (all samples), as stock dasen does. Passing
+## reference = <the wave-1 columns> (integer indices or a logical mask) estimates the reference
+## from those columns and still maps every sample onto it. Returns a minfi MethylSet; getBeta()/
+## getM()/betas() apply offset 100 by default, which equals dasen's default fudge=100, so no fudge
+## is applied here. wateRmelon:::got is the probe design-type accessor stock dasen uses.
 dasen_stream <- function(mset, reference = NULL) {
     mns <- minfi::getMeth(mset); uns <- minfi::getUnmeth(mset)
     onetwo <- wateRmelon:::got(mset)
@@ -356,8 +383,8 @@ read_sample_sheet <- function(path) {
 ## Sample-sheet / targets data frame.
 load_targets <- function() {
     t <- read_sample_sheet(SAMPLE_SHEET)
-    ## IDATs live one directory per Sentrix barcode (Released_Data/Data/<barcode>/...), NOT
-    ## flat; barcode = Sample_Group before the first "_".
+    ## IDATs live one directory per Sentrix barcode (Released_Data/Data/<barcode>/...);
+    ## barcode = Sample_Group before the first "_".
     shape_ok <- grepl("^[0-9]+_R[0-9]+C[0-9]+$", t$Sample_Group)
     if (any(!shape_ok))
         stop("load_targets: Sample_Group not in <barcode>_R##C## form for ",
@@ -378,7 +405,7 @@ load_raw_rgSet <- function() {
     minfi::read.metharray.exp(targets = load_targets(), force = TRUE)
 }
 
-## ---- Path bridge: see + validate the logical -> physical mapping -----------
+## Path bridge: see + validate the logical -> physical mapping ----
 ## Registry of the logical paths, each tagged role (input/output/root) and the
 ## entry point that needs it. Drives describe_paths() and validate_paths().
 .path_registry <- function() {
@@ -407,14 +434,10 @@ load_raw_rgSet <- function() {
         row("DUPS_FILE",       DUPS_FILE,       "input",  "phenotype_bridge"),
         row("PROBLEM_HISTORY_FILE", PROBLEM_HISTORY_FILE, "input", "phenotype_bridge"),
         row("IBD_FILE",        IBD_FILE,        "input",  "phenotype_bridge"),
+        row("SAMPLE_SWAPS_FILE", SAMPLE_SWAPS_FILE, "input", "phenotype_bridge"),
         row("PHENOTYPE_FILE",  PHENOTYPE_FILE,  "output", "phenotype_bridge"),
-        row("PHENOTYPE_FILE",  PHENOTYPE_FILE,  "input",  "stage5"),
-        ## ADJUSTED_BETAS_FILE intentionally NOT required: population.R's adjusted pass
-        ## skips gracefully when it's absent.
-        row("CLEAN_ID_FILE",   CLEAN_ID_FILE,   "input",  "additional_analysis"),
-        row("TWIN_PHENO_FILE", TWIN_PHENO_FILE, "input",  "additional_analysis"),
-        row("DYADS_FILE",      DYADS_FILE,      "output", "additional_analysis"),
-        row("TWIN_RS_FILE",    TWIN_RS_FILE,    "output", "additional_analysis"))
+        ## ADJUSTED_BETAS_FILE is optional: population.R skips the adjusted pass without it.
+        row("PHENOTYPE_FILE",  PHENOTYPE_FILE,  "input",  "stage5"))
 }
 
 .path_status <- function(path, role) {
@@ -442,23 +465,19 @@ describe_paths <- function() {
     invisible(reg)
 }
 
-## Fail-fast pre-run check. stage in {"stage1","phenotype_bridge","stage5",
-## "additional_analysis","all"}: the required inputs must be readable and
-## ANALYSIS_DIR writable.
-validate_paths <- function(stage = c("all", "stage1", "person_table", "phenotype_bridge", "stage5", "additional_analysis")) {
-    stage <- match.arg(stage)
+## Pre-run check for one entry point (a stage in the registry, e.g. "stage1", "person_table",
+## "phenotype_bridge", "stage5") or "all": its inputs must exist and ANALYSIS_DIR be writable.
+validate_paths <- function(stage = "all") {
     reg <- .path_registry()
+    stages <- setdiff(unique(reg$stage), "all")
+    if (!stage %in% c("all", stages))
+        stop("validate_paths: unknown stage \"", stage, "\"; one of: ",
+             paste(c("all", stages), collapse = ", "), call. = FALSE)
     problems <- character(0)
     dir.create(ANALYSIS_DIR, recursive = TRUE, showWarnings = FALSE)
     if (file.access(ANALYSIS_DIR, 2) != 0)
         problems <- c(problems, paste("ANALYSIS_DIR not writable:", ANALYSIS_DIR))
-    want <- switch(stage,
-                   all = c("stage1", "person_table", "phenotype_bridge", "stage5", "additional_analysis", "all"),
-                   stage1 = c("stage1", "all"),
-                   person_table = c("person_table", "all"),
-                   phenotype_bridge = c("phenotype_bridge", "all"),
-                   stage5 = c("stage5", "all"),
-                   additional_analysis = c("additional_analysis", "all"))
+    want <- if (stage == "all") reg$stage else c(stage, "all")
     need <- reg[reg$role == "input" & reg$stage %in% want, ]
     for (i in seq_len(nrow(need)))
         if (!file.exists(need$path[i]))
@@ -505,7 +524,7 @@ validate_phenotype_bridge <- function(pheno, dyads, excluded_subject_ids = chara
     fam.na <- is.na(pheno$FamilyID) & !is.na(pheno$IndividualID)
     if (any(fam.na))
         problems <- c(problems, paste0(sum(fam.na),
-            " sample(s) resolved an aid but no FamilyID (pfamid missing in the person table — should never happen): ",
+            " sample(s) resolved an aid but no FamilyID (pfamid missing in the person table): ",
             paste(pheno$Sample[fam.na], collapse = ", ")))
     dup <- duplicated(pheno$Sample)
     if (any(dup))
@@ -519,7 +538,7 @@ validate_phenotype_bridge <- function(pheno, dyads, excluded_subject_ids = chara
     dyad_ids <- unique(c(dyads$aid.x, dyads$aid.y))
     if (nrow(dyads) > 0 && length(intersect(have_ids, dyad_ids)) == 0)
         problems <- c(problems, paste0("none of the ", length(have_ids), " phenotype-file individuals ",
-            "appear in DYADS_FILE's aid.x/aid.y — the random_id <-> person crosswalk is very likely ",
+            "appear in DYADS_FILE's aid.x/aid.y; the random_id <-> person crosswalk is very likely ",
             "keyed wrong (heritability/twin-corr would silently degrade to no family structure)"))
     if (length(problems))
         stop("validate_phenotype_bridge() failed:\n  - ", paste(problems, collapse = "\n  - "),
@@ -529,10 +548,9 @@ validate_phenotype_bridge <- function(pheno, dyads, excluded_subject_ids = chara
     invisible(TRUE)
 }
 
-## ---- Dev-only test profile (smoke tests) — never shipped -------------------
-## Sourced LAST so it can override the constants and functions above (e.g. inject a
-## synthetic RGChannelSet). Unset in real runs; the profile lives under test/ and is
-## excluded from the public runtime.
+## Test profile ----
+## METHYL_TEST_PROFILE names an R file sourced last, so it can override the constants and
+## functions above (e.g. to inject a synthetic RGChannelSet). Leave it unset for real runs.
 .test_profile <- Sys.getenv("METHYL_TEST_PROFILE", "")
 if (nzchar(.test_profile)) {
     if (!file.exists(.test_profile) && file.exists(file.path(.root, .test_profile)))

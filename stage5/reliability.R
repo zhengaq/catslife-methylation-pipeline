@@ -1,8 +1,8 @@
-### stage5/reliability.R — per-clock technical reliability across the intentional-
+### stage5/reliability.R: per-clock technical reliability across the intentional-
 ### duplicate aliquots (DUPS_FILE) that build_phenotype_file.R retains and tags with
-### a shared DupGroupID. Same-DNA re-runs, so this measures assay + pipeline
-### reliability (not biology). Writes output/tables/clock_duplicate_reliability.csv;
-### no duplicates -> an empty, well-formed table (not an error).
+### a shared DupGroupID. The aliquots are re-runs of the same DNA, so this measures
+### assay and pipeline reliability. Writes TABLES_DIR/clock_duplicate_reliability.csv,
+### with zero rows when the cohort has no duplicates.
 source("config.R"); source("stage5/helpers.R")
 
 OUT      <- file.path(TABLES_DIR, "clock_duplicate_reliability.csv")
@@ -10,7 +10,7 @@ REL_COLS <- c("clock", "n_groups", "n_samples", "icc", "retest_r", "mean_abs_dif
 
 m  <- read.csv(file.path(DERIVED_DIR, "mAge_clocks.csv"))
 ph <- read.csv(PHENOTYPE_FILE)
-clock_cols <- intersect(LME_CLOCKS, names(m))
+clock_cols <- intersect(CLOCK_COLUMNS, names(m))
 
 write_reliability <- function(df) {
   write.csv(df, OUT, row.names = FALSE)

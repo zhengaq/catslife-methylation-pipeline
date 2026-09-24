@@ -12,7 +12,7 @@ Code lives in this git checkout; data lives outside it, in two sibling trees tha
 
 ```
 <delivery>/
-├── catslife-methylation-pipeline/   this repo — code only
+├── catslife-methylation-pipeline/   this repo (code only)
 ├── data/                            raw inputs (read-only)
 └── work/                            all generated output
     ├── derived/       analysis-ready data: person table, dyads, phenotype,
@@ -48,7 +48,7 @@ map and confirm where each stage will read and write.
 | 2 | `2.methylation_pca.R` | PCA on M-values (top most-variable CpGs by default; all CpGs via `METHYL_PCA_SUBSET=FALSE`), colored by tissue |
 | 3 | `3.methylation_adjust.chunked.R` | Estimate cell-type proportions (EpiDISH for blood, BeadSorted/`estimateLC` for saliva) -> residualize betas on cell proportions -> residualize on plate batch. Chunked via `--part`/`--nparts` for parallel (e.g. SLURM array) runs |
 | 4 | `4.methylation_merge.chunked.R` | Merge the per-chunk blood + saliva outputs -> `B.adjusted.platebatches.txt` |
-| 5 | `run_stage5.R` (sources `stage5/`) | ~17 epigenetic clocks via `dnaMethyAge` (a primary pass on stage 1's unadjusted betas, plus a second comparison pass on stage 4's adjusted betas), then descriptive stats and clock-vs-age validation |
+| 5 | `run_stage5.R` (sources `stage5/`) | 15 epigenetic clocks via `dnaMethyAge` (a primary pass on stage 1's unadjusted betas, plus a second comparison pass on stage 4's adjusted betas), then descriptive stats and clock-vs-age validation |
 | 6 | `run_stage6.R` (sources `stage6/`) | Sensitivity & validity checks on the stage 1-5 output: clock-vs-age validity recomputed one-per-person / one-per-family, DNAmTL identity, ID resolution + clock-NA propagation, and a sex-chromosome / batch-structure PCA |
 
 Stage 5 needs a person-level phenotype file (age, sex, family). Build it by
@@ -58,24 +58,28 @@ the sample list into the person table `CLEAN_ID_FILE`), then
 `run_stage5.R` (see below).
 
 Stage 6 runs after stage 5 and reads its `mAge_clocks.csv` (and stage 1's betas for the
-PCA check). Each check is independent and guarded, so one whose input is absent is
-skipped rather than aborting the rest. `stage6/validity_clocks.R` writes tables to
-`output/sensitivity/`; `stage6/pca_sex_batch.R` writes `output/reports/PCA_sex_batch.pdf`
+PCA check). The checks are independent: if one fails (for example because its input is
+missing), the other still runs. `stage6/validity_clocks.R` writes tables to
+`results/sensitivity/`; `stage6/pca_sex_batch.R` writes `results/reports/PCA_sex_batch.pdf`
 and `pca_sex_batch_summary.csv` (each PC's variance and its ANOVA R² with sex and plate).
 
 ## The ID bridge (array IDs <-> person IDs)
 
-Stages 1-4 key on the array id, which is a de-identified `random_id`, whereas stage 5 keys on person/family ids (i.e., `aid`/`pfamid`).
-`scripts/build/build_person_table.R` merges the admin file with the sample list, so the person table carries
-`random_id`; `scripts/build/build_phenotype_file.R` then joins the sheet on `random_id`.
-The `_<wave>` suffix gives the `Wave`: one row **per sample**, with `Age` from the
-admin `LabAge` (wave 2) or `LabAge1` (wave 1) per row.
+Stages 1-4 key on the array id, a de-identified `random_id`; stage 5 keys on person and
+family ids (`aid`/`pfamid`). `scripts/build/build_person_table.R` merges the admin file
+with the sample list, so the person table carries `random_id`, and
+`scripts/build/build_phenotype_file.R` joins the sample sheet on it. The sheet's
+`_<wave>` suffix gives the `Wave`: one row **per sample**, with `Age` from the admin
+`LabAge` (wave 2) or `LabAge1` (wave 1).
 
-- keeps intentional duplicate pairs (`DUPS_FILE`) as a grouped consistency check
-  rather than dropping them,
+The phenotype build also
+
+- keeps intentional duplicate pairs (`DUPS_FILE`) and groups them for a consistency check,
+- applies sample-label corrections (`SAMPLE_SWAPS_FILE`, see below),
 - excludes known-problem samples (`PROBLEM_HISTORY_FILE`),
-- flags (not drops) likely cross-wave longitudinal resamples (`IBD_FILE`), and
-- writes a three-source sex QC report (`output/reports/sex_qc.csv`).
+- flags likely cross-wave longitudinal resamples (`IBD_FILE`) without dropping them, and
+- writes a sex QC report comparing the admin, pedigree and sample-sheet sex
+  (`results/reports/sex_qc.csv`).
 
 ## Environment
 
@@ -125,10 +129,10 @@ admin `LabAge` (wave 2) or `LabAge1` (wave 1) per row.
    loading any participant data wholesale, since exact filenames vary between
    waves.
 2. `cp config.site.example.R config.site.R` and edit `config.site.R`.
-   Set input root(s), the writable output root (`METHYL_ANALYSIS_DIR`), the 
-   IDAT directory + sample sheet, the pedigree file, the individual-admin 
-   file (`METHYL_ADMIN_FILE`), and the sample list (`METHYL_SAMPLE_LIST_FILE`, 
-   the `random_id`<->`nidaid` crosswalk). 
+   Set input root(s), the writable output root (`METHYL_ANALYSIS_DIR`), the
+   IDAT directory + sample sheet, the pedigree file, the individual-admin
+   file (`METHYL_ADMIN_FILE`), and the sample list (`METHYL_SAMPLE_LIST_FILE`,
+   the `random_id`<->`nidaid` crosswalk).
 3. Confirm the mapping resolves and inputs/outputs exist:
    ```r
    source("config.R"); describe_paths()
@@ -149,8 +153,8 @@ admin `LabAge` (wave 2) or `LabAge1` (wave 1) per row.
    Rscript run_stage5.R
    Rscript run_stage6.R                             # sensitivity & validity checks
    ```
-   `build_phenotype_file.R` fails loud (rather than silently guessing) if any
-   non-control sample's `random_id` does not resolve to a person.
+   `build_phenotype_file.R` stops with an error if any non-control sample's
+   `random_id` does not resolve to a person.
 
    For long or failure-prone runs, `run_stage5_pipeline.sh` (the ID bridge + stage 5)
    and `run_stage6_pipeline.sh` (stage 6) checkpoint each step to `logs/.ckpt/` and skip
@@ -165,17 +169,27 @@ admin `LabAge` (wave 2) or `LabAge1` (wave 1) per row.
   new delivery wave (run this first, see step 1 above).
 - `scripts/build/crosscheck_genomestudio_betas.R` - compares our computed dasen betas
   against GenomeStudio's own `Methylation_Profile.txt` for a probe/sample
-  spot-check. An independent sanity check, not part of the normal run.
+  spot-check. It is not part of the normal run.
 
 ## Additional notes
 
-- Existing sex discrepancy. 4 participants with identified mis-match on stated vs. genotyped; Any additional mismatch (i.e., admin file's self-report vs. pedigree file) will be flagged in 
-  `output/reports/sex_qc.csv`.
+- Sample-label corrections. `SAMPLE_SWAPS_FILE` (a CSV with `Incorrect Random ID`,
+  `Correct Random ID` and `Notes` columns) lists sample-sheet labels found to be wrong.
+  A row whose two ids differ relabels that sample (a swap is two rows); a row whose correct
+  id is `99999` excludes the sample, since its person is unknown; a row whose two ids are equal
+  keeps the sample with `Identity_flag`, and its clocks are set to NA and marked
+  `clock_excluded` (set `METHYL_EXCLUDE_IDENTITY_FLAGGED=FALSE` to keep them). The phenotype
+  file keeps the sheet's original label in `Subject_ID_sheet`. Every listed id must appear on
+  the sample sheet exactly once. A cohort without corrections supplies the header only.
+- Sex checks. Mismatches between the admin file's self-report and the pedigree file are
+  flagged in `results/reports/sex_qc.csv`. Stage 6 lists samples whose methylation sex (their
+  position on the sex principal component) disagrees with their admin sex in
+  `results/reports/pca_sex_mismatch.csv`; a sample there is a likely label swap.
 - Age is the admin file's `LabAge` (wave 2) or `LabAge1` (wave 1), assigned by the
   sample's `Wave` (the sheet's `_2` suffix). Samples with no age for their wave
   resolve normally but have no age-acceleration value.
 - The array->person crosswalk is `random_id` -> `nidaid` (via the sample list) -> the admin
-  person
+  person.
 - Stage 2 PCA uses the top `PCA_NCPG` (5,000) most-variable CpGs by default
   (`METHYL_PCA_SUBSET=TRUE`), the standard input for a methylation structure/QC diagnostic:
   minfi's `mdsPlot()` defaults to the 1,000 most-variable positions (Aryee et al. 2014,

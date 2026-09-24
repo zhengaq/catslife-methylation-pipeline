@@ -1,27 +1,26 @@
-### stage6/validity_clocks.R — Stage 6 sensitivity/validity checks that run on the
-### delivered clock table (ANALYSIS_DIR/mAge_clocks.csv). Base R only; no betas needed.
-### Checks:
-###   - clock-vs-age validity recomputed one-sample-per-person and one-per-family, to
-###     show the correlations are not inflated by co-twin / repeated-wave non-independence;
-###   - DNAmTL (dnaMethyAge clock "LuA2019") identity: its value is telomere length in kb,
-###     so a negative age correlation is expected, not a failing age clock;
-###   - ID-bridge resolution + family/wave structure (unresolved ids, individuals, families);
-###   - clock-NA propagation, cross-referenced to stage-1 QC drops (a sample with no betas
-###     is carried as an all-NA row, not a clock failure).
-### Outputs: ANALYSIS_DIR/sensitivity/{validity_independence,clock_na,id_resolution,allNA_samples}.csv
+### stage6/validity_clocks.R: sensitivity and validity checks on the clock table
+### (DERIVED_DIR/mAge_clocks.csv). Base R only; no betas needed.
+###   - clock-vs-age correlations recomputed on one sample per person and one per family,
+###     to test for inflation from co-twin / repeated-wave non-independence;
+###   - DNAmTL (dnaMethyAge clock "LuA2019") estimates telomere length in kb, so its
+###     negative correlation with age is expected;
+###   - ID-bridge resolution and family/wave structure (unresolved ids, individuals, families);
+###   - clock-NA counts, with all-NA rows traced to stage-1 QC drops (no betas) or an
+###     identity flag (clock_excluded).
+### Outputs: SENS_DIR/{validity_independence,clock_na,id_resolution,allNA_samples}.csv
 
 source("config.R")
 
 CLOCKS_FILE <- file.path(DERIVED_DIR, "mAge_clocks.csv")
 if (!file.exists(CLOCKS_FILE))
-    stop("stage6/validity_clocks.R: missing ", CLOCKS_FILE, " — run stage 5 first.")
+    stop("stage6/validity_clocks.R: missing ", CLOCKS_FILE, "; run stage 5 first.")
 dir.create(SENS_DIR, recursive = TRUE, showWarnings = FALSE)
 
 m      <- read.csv(CLOCKS_FILE, check.names = FALSE, stringsAsFactors = FALSE)
 idcol  <- if ("aid"    %in% names(m)) "aid"    else "IndividualID"
 famcol <- if ("pfamid" %in% names(m)) "pfamid" else "FamilyID"
-## Clock value columns (the mAge / pace / mitotic-division outputs), not the paired
-## *_Acceleration or meta columns — matches the naming in stage5/population.R::clock_specs.
+## Clock value columns (the mAge / pace / mitotic-division outputs), excluding the paired
+## *_Acceleration and meta columns; follows the naming in stage5/population.R::clock_specs.
 clocks <- grep("(_mAge|_mitoticdivisions|Dunedin_Pace)$", names(m), value = TRUE)
 n      <- nrow(m)
 
@@ -39,7 +38,7 @@ one_per <- function(d, key) {                 # one random row per key level (dr
 cat("=== stage 6: clock validity/sensitivity on", basename(CLOCKS_FILE),
     "(", n, "samples,", length(clocks), "clocks ) ===\n")
 
-## ---- ID resolution + non-independence structure -------------------------
+## ID resolution + non-independence structure ----
 n_id_na  <- sum(is.na(m[[idcol]])  | m[[idcol]]  == "")
 n_fam_na <- sum(is.na(m[[famcol]]) | m[[famcol]] == "")
 n_indiv  <- length(unique(m[[idcol]][ !(is.na(m[[idcol]])  | m[[idcol]]  == "") ]))
@@ -52,16 +51,16 @@ cat(sprintf("ID: %d samples | unresolved %s=%d %s=%d | %d individuals | %d famil
             n, idcol, n_id_na, famcol, n_fam_na, n_indiv, n_fam))
 cat("samples-per-individual:"); print(table(as.integer(table(m[[idcol]]))))
 
-## ---- clock-NA propagation + stage-1 QC cross-reference ------------------
+## clock-NA propagation + stage-1 QC cross-reference ----
 cm     <- vapply(clocks, function(cl) is.finite(suppressWarnings(as.numeric(m[[cl]]))), logical(n))
 na_per <- colSums(!cm)
 allna  <- rowSums(!cm) == length(clocks)
 x2 <- data.frame(clock = clocks, n_NA = as.integer(na_per), pct_NA = round(100 * na_per / n, 2))
 write.csv(x2[order(-x2$n_NA), ], file.path(SENS_DIR, "clock_na.csv"), row.names = FALSE)
-bad <- m[allna, intersect(c("Sample", idcol, famcol, "Age", "Sex", "Sex_flag_manual", "clock_excluded"), names(m))]
-## Two benign reasons a row is all-NA: it was a curated sex exclusion (clock_excluded == TRUE,
-## clocks deliberately NA-ed) or the sample was dropped at stage-1 QC (no betas). Cross-reference
-## to stage-1 sample missingness when that report is present to confirm the QC-drop reason.
+bad <- m[allna, intersect(c("Sample", idcol, famcol, "Age", "Sex", "Identity_flag", "clock_excluded"), names(m))]
+## A row is all-NA either because its identity is flagged (clock_excluded == TRUE) or because
+## the sample was dropped at stage-1 QC and has no betas. The stage-1 sample-missingness
+## report, when present, confirms the second case.
 excl_col <- if ("clock_excluded" %in% names(m)) m$clock_excluded[allna] %in% TRUE else rep(FALSE, nrow(bad))
 miss_f   <- file.path(REPORT_DIR, "sample_missingness.txt")
 if (nrow(bad) && file.exists(miss_f)) {
@@ -71,13 +70,13 @@ if (nrow(bad) && file.exists(miss_f)) {
     bad$qc_dropped         <- bad$stage1_missingness > SAMPLE_MISSINGNESS
 }
 write.csv(bad, file.path(SENS_DIR, "allNA_samples.csv"), row.names = FALSE)
-cat(sprintf("clock-NA: %d/%d samples fully complete; %d lose >=1 clock; %d all-NA (%d sex-excluded",
+cat(sprintf("clock-NA: %d/%d samples fully complete; %d lose >=1 clock; %d all-NA (%d identity-flagged",
             sum(rowSums(!cm) == 0), n, sum(rowSums(!cm) >= 1), sum(allna), sum(excl_col)))
 if (!is.null(bad$qc_dropped))
     cat(sprintf(", %d stage-1 QC drops", sum(bad$qc_dropped %in% TRUE & !excl_col)))
 cat(")\n")
 
-## ---- age-validity under one-per-person / one-per-family -----------------
+## age-validity under one-per-person / one-per-family ----
 set.seed(123)
 d_person <- one_per(m, idcol)
 d_family <- one_per(d_person, famcol)
@@ -97,7 +96,7 @@ write.csv(validity, file.path(SENS_DIR, "validity_independence.csv"), row.names 
 cat(sprintf("validity: N all=%d one-per-person=%d one-per-family=%d | max |shift(all->family)|=%.3f\n",
             n, nrow(d_person), nrow(d_family), max(abs(validity$shift_family), na.rm = TRUE)))
 if ("LuA_mAge" %in% clocks)
-    cat(sprintf("note: LuA_mAge is DNAmTL (telomere length, range [%.2f, %.2f] kb) — exclude from age-tracking expectation\n",
+    cat(sprintf("note: LuA_mAge is DNAmTL (telomere length, range [%.2f, %.2f] kb), not an age estimate\n",
                 min(suppressWarnings(as.numeric(m$LuA_mAge)), na.rm = TRUE),
                 max(suppressWarnings(as.numeric(m$LuA_mAge)), na.rm = TRUE)))
 cat("stage6/validity_clocks: wrote 4 tables to", SENS_DIR, "\n")

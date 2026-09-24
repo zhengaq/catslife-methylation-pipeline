@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
-### run_stage6.R — orchestrate stage 6: sensitivity & validity checks on the stage 1-5
-### output. Each check is independent and guarded, so one that lacks its input (or a
-### missing optional dependency) is skipped with a message rather than aborting the rest.
+### run_stage6.R: sensitivity and validity checks on the stage 1-5 output. The checks are
+### independent; one that fails (e.g. a missing input or package) is reported and the
+### others still run.
 ###   - validity_clocks.R : clock-vs-age validity under non-independence, DNAmTL identity,
 ###                         ID resolution, clock-NA propagation (needs stage-5 mAge_clocks.csv)
 ###   - pca_sex_batch.R   : sex-chromosome / batch structure PCA (needs stage-1 betas + minfi)

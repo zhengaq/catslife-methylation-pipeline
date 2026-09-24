@@ -1,7 +1,9 @@
 #!/usr/bin/env Rscript
+### Read-only look at a new delivery: the structure (columns, row counts) of the sample
+### sheet, SIF, admin file, sample list and QC files, plus a crosswalk dry-run.
 ### Usage: Rscript scripts/build/inspect_2026_delivery.R [--full-rows]
-###   --full-rows   also print a few example DATA rows — only use against
-###                 de-identified examples, never participant files
+###   --full-rows   also print a few example data rows; only use it on de-identified
+###                 examples, never on participant files
 suppressMessages({ library(readxl); library(haven) })
 source("config.R")
 
@@ -14,7 +16,7 @@ p <- function(...) file.path(root, ...)
 
 section <- function(title) cat("\n====", title, "====\n")
 
-## ---- 1. Sample sheet (GenomeStudio bracket-preamble format) --------------
+## 1. Sample sheet (GenomeStudio bracket-preamble format) ----
 section("Sample sheet")
 sheet_path <- Sys.getenv("METHYL_RECON_SAMPLE_SHEET", p("example_SampleSheet_2_EPIC.csv"))
 if (file.exists(sheet_path)) {
@@ -26,7 +28,7 @@ if (file.exists(sheet_path)) {
     if (show_rows) print(utils::head(d, n_rows))
 } else cat("(not found:", sheet_path, ")\n")
 
-## ---- 2. Pedigree / SIF file (xlsx) ----------------------------------------
+## 2. Pedigree / SIF file (xlsx) ----
 section("Pedigree / SIF file")
 sif_path <- Sys.getenv("METHYL_RECON_SIF", p("example_SIF.xlsx"))
 if (file.exists(sif_path)) {
@@ -38,7 +40,7 @@ if (file.exists(sif_path)) {
     }
 } else cat("(not found:", sif_path, ")\n")
 
-## ---- 2b. CATSLife individual-admin file (person source-of-truth) ----------
+## 2b. CATSLife individual-admin file (person source-of-truth) ----
 ## nidaid is the join key to the sample list (-> CLEAN_ID_FILE).
 section("Individual-admin file (.sav)")
 admin_path <- Sys.getenv("METHYL_RECON_ADMIN", p("Example_individual_admin.sav"))
@@ -54,7 +56,7 @@ if (file.exists(admin_path)) {
     if (show_rows) print(as.data.frame(utils::head(adm, n_rows)))
 } else cat("(not found:", admin_path, ")\n")
 
-## ---- 2c. Sample list: the array<->person crosswalk (random_id <-> nidaid + wave) --
+## 2c. Sample list: the array<->person crosswalk (random_id <-> nidaid + wave) ----
 section("Sample list (random_id <-> nidaid + wave)")
 sl_path <- Sys.getenv("METHYL_RECON_SAMPLE_LIST", p("Buffy Coat DNA Methylation Sample List.xlsx"))
 sl <- NULL
@@ -68,7 +70,7 @@ if (file.exists(sl_path)) {
     if (show_rows) print(as.data.frame(utils::head(sl, n_rows)))
 } else cat("(not found:", sl_path, ")\n")
 
-## ---- 2d. Crosswalk dry-run: sheet random_id -> sample list -> nidaid -> admin --
+## 2d. Crosswalk dry-run: sheet random_id -> sample list -> nidaid -> admin ----
 ## Previews what validate_phenotype_bridge() enforces, per hop, so a low rate
 ## localizes the break.
 section("Crosswalk dry-run (sheet random_id -> [sample list] nidaid -> [admin] person)")
@@ -90,7 +92,7 @@ if (file.exists(sheet_path)) {
     } else cat("  (hop 2 skipped: sample list or admin not available)\n")
 } else cat("(skipped: sample sheet not available)\n")
 
-## ---- 3. Samples_Table (QC/signal summary, NOT an ID bridge) --------------
+## 3. Samples_Table (QC/signal summary) ----
 section("Samples_Table (QC summary)")
 st_path <- Sys.getenv("METHYL_RECON_SAMPLES_TABLE", p("example_Samples_Table.csv"))
 if (file.exists(st_path)) {
@@ -99,7 +101,7 @@ if (file.exists(st_path)) {
     if (show_rows) print(d)
 } else cat("(not found:", st_path, ")\n")
 
-## ---- 4. DUPS file (intentional QC duplicate pairs) -----------------------
+## 4. DUPS file (intentional QC duplicate pairs) ----
 section("DUPS file")
 dups_path <- Sys.getenv("METHYL_RECON_DUPS", p("example_Sample_DUPS.csv"))
 if (file.exists(dups_path)) {
@@ -108,7 +110,7 @@ if (file.exists(dups_path)) {
     if (show_rows) print(utils::head(d, n_rows))
 } else cat("(not found:", dups_path, ")\n")
 
-## ---- 5. IBD relatedness file (PLINK --genome output) ----------------------
+## 5. IBD relatedness file (PLINK --genome output) ----
 section("IBD relatedness file")
 ibd_path <- Sys.getenv("METHYL_RECON_IBD", p("example_IBD_unexp_dups_exp.csv"))
 if (file.exists(ibd_path)) {
@@ -118,7 +120,7 @@ if (file.exists(ibd_path)) {
         print(table(DUPLICATED = d$DUPLICATED, EXPECTED = d$EXPECTED))
 } else cat("(not found:", ibd_path, ")\n")
 
-## ---- 6. Project problem history --------------------------------------------
+## 6. Project problem history ----
 section("Project problem history")
 prob_path <- Sys.getenv("METHYL_RECON_PROBLEM_HISTORY", p("example_project_problem.xlsx"))
 if (file.exists(prob_path)) {
@@ -129,9 +131,9 @@ if (file.exists(prob_path)) {
     }
 } else cat("(not found:", prob_path, ")\n")
 
-## ---- 7. Methylation_Profile.txt (wide GenomeStudio Final Report) ---------
-## Header only — the file can be tens of thousands of columns wide, so never load it wholesale.
-section("Methylation_Profile.txt (header only, never loaded wholesale)")
+## 7. Methylation_Profile.txt (wide GenomeStudio Final Report) ----
+## Header only: the file can be tens of thousands of columns wide.
+section("Methylation_Profile.txt (header only)")
 profile_path <- Sys.getenv("METHYL_RECON_PROFILE", p("Methylation_Profile_headers_rows.txt"))
 if (file.exists(profile_path)) {
     header <- strsplit(readLines(profile_path, n = 1L, warn = FALSE), "\t")[[1]]
@@ -140,16 +142,16 @@ if (file.exists(profile_path)) {
     cat(paste0("  ", utils::head(header, 50)), sep = "\n")
 } else cat("(not found:", profile_path, ")\n")
 
-## ---- 8. Sentrix barcode subdirectories vs sample sheet's Sentrix_ID ------
-## Self-skips (rather than false-matching unrelated subdirectories) unless IDAT_DIR
-## looks like a Released_Data/Data/ root with digit-named barcode subdirs.
+## 8. Sentrix barcode subdirectories vs sample sheet's Sentrix_ID ----
+## Skipped unless IDAT_DIR looks like a Released_Data/Data/ root with digit-named barcode
+## subdirectories, so unrelated directories are not reported as mismatches.
 section("Barcode subdirectory cross-check (IDAT_DIR)")
 if (dir.exists(IDAT_DIR) && file.exists(sheet_path)) {
     all_dirs <- list.dirs(IDAT_DIR, full.names = FALSE, recursive = FALSE)
     have_dirs <- grep("^[0-9]+$", all_dirs, value = TRUE)  # only digit-only (barcode-shaped) names
     sheet_barcodes <- unique(sub("_.*$", "", read_sample_sheet(sheet_path)$Sample_Group))
     if (!length(have_dirs)) {
-        cat("(skipped: no digit-named subdirectories under IDAT_DIR (", IDAT_DIR, ") — ",
+        cat("(skipped: no digit-named subdirectories under IDAT_DIR (", IDAT_DIR, "); ",
             "point METHYL_IDAT_DIR at Released_Data/Data/ to run this check against a delivery)\n", sep = "")
     } else {
         missing <- setdiff(sheet_barcodes, have_dirs)

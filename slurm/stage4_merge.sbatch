@@ -7,7 +7,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=32G
-# Stage 4: merge the NPARTS chunks -> output/B.adjusted.platebatches.txt. Run after stage 3.
+# Stage 4: merge the NPARTS chunks -> ADJUSTED_BETAS_FILE (B.adjusted.platebatches.txt). Run after stage 3.
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-$PWD}"
 source slurm/env.sh

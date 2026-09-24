@@ -133,6 +133,30 @@ IBD_FILE             <- Sys.getenv("METHYL_IBD_FILE",             file.path(DATA
 ## PI Provided Subject ID (= random_id) reaches the person world (aid/pfamid).
 ADMIN_FILE       <- Sys.getenv("METHYL_ADMIN_FILE",       file.path(DATA_DIR, "individual_admin.sav"))
 SAMPLE_LIST_FILE <- Sys.getenv("METHYL_SAMPLE_LIST_FILE", file.path(DATA_DIR, "sample_list.xlsx"))
+## Read SAMPLE_LIST_FILE as data.frame(random_id, nidaid). An empty or "NA" nidaid marks a
+## random_id whose person is not yet confirmed ("pending"): build_person_table.R leaves it out,
+## and build_phenotype_file.R leaves out its samples until the nidaid is filled in. The file is
+## edited by hand, so ids are whitespace-trimmed, rows with no random_id (blank rows) are
+## dropped, and a random_id that is not a whole number stops the build.
+read_sample_list <- function(path = SAMPLE_LIST_FILE) {
+    s <- readxl::read_excel(path, na = c("", "NA"), trim_ws = TRUE)
+    if (!all(c("random_id", "nidaid") %in% names(s)))
+        stop("read_sample_list: ", path, " needs random_id and nidaid columns")
+    nid <- trimws(as.character(s$nidaid)); nid[nid %in% c("", "NA")] <- NA_character_
+    rid <- s$random_id
+    if (!is.numeric(rid)) {                      # typed as text somewhere in the column
+        rid <- trimws(as.character(rid)); rid[!nzchar(rid)] <- NA
+        if (any(bad <- !is.na(rid) & !grepl("^[0-9]+(\\.0+)?$", rid)))
+            stop("read_sample_list: random_id value(s) that are not whole numbers in ", path, ": ",
+                 paste(unique(rid[bad]), collapse = ", "))
+        rid <- as.numeric(rid)
+    }
+    if (any(bad <- !is.na(rid) & rid != round(rid)))
+        stop("read_sample_list: random_id value(s) that are not whole numbers in ", path, ": ",
+             paste(unique(rid[bad]), collapse = ", "))
+    keep <- !is.na(rid)
+    data.frame(random_id = as.integer(rid[keep]), nidaid = nid[keep], stringsAsFactors = FALSE)
+}
 ## CLEAN_ID_FILE is written by build_person_table.R; DYADS_FILE by catslife_id_dyads.R.
 CLEAN_ID_FILE    <- Sys.getenv("METHYL_CLEAN_ID_FILE",    file.path(DERIVED_DIR, "catslife_person_table.sav"))
 DYADS_FILE       <- Sys.getenv("METHYL_DYADS_FILE",       file.path(DERIVED_DIR, "catslife_dyads.csv"))
@@ -198,13 +222,12 @@ classify_ibd_pair <- function(s1, s2, person) {
 ## SAMPLE_SWAPS_FILE lists sample-sheet labels (PI Provided Subject ID) found to be wrong, in
 ## columns "Incorrect Random ID" and "Correct Random ID" (a swap is two rows, one per sample).
 ## Each row is one of:
-##   relabel: the sample labeled <incorrect> is really <correct>;
-##   exclude: <correct> is UNKNOWN_RANDOM_ID (the sample's person is unknown); the sample is dropped;
+##   relabel: the sample labeled <incorrect> is really <correct> (which may be a newly assigned id;
+##            it reaches a person through SAMPLE_LIST_FILE like any other);
 ##   flag:    <incorrect> == <correct> (identity doubtful); the sample is kept with Identity_flag,
 ##            and its clocks are NA-filled (clock_excluded) while EXCLUDE_IDENTITY_FLAGGED is TRUE.
 ## A cohort with no corrections supplies the file with its header only.
 SAMPLE_SWAPS_FILE <- Sys.getenv("METHYL_SAMPLE_SWAPS_FILE", file.path(DATA_DIR, "sample_swaps.csv"))
-UNKNOWN_RANDOM_ID <- 99999L
 EXCLUDE_IDENTITY_FLAGGED <- !(toupper(Sys.getenv("METHYL_EXCLUDE_IDENTITY_FLAGGED", "TRUE")) %in% c("FALSE", "0", "NO"))
 
 ## Labels in the sample sheet's form: wave 1 carries no suffix ("15821"), while the swap file
@@ -228,8 +251,7 @@ read_sample_swaps <- function(path = SAMPLE_SWAPS_FILE) {
     if (anyDuplicated(from))
         stop("read_sample_swaps: id(s) listed more than once as incorrect: ",
              paste(unique(from[duplicated(from)]), collapse = ", "))
-    action <- ifelse(from == to, "flag",
-                     ifelse(strip_wave_suffix(to) == as.character(UNKNOWN_RANDOM_ID), "exclude", "relabel"))
+    action <- ifelse(from == to, "flag", "relabel")
     if (anyDuplicated(to[action == "relabel"]))
         stop("read_sample_swaps: two samples relabeled to the same id")
     data.frame(from = from, to = to, action = action, notes = notes, stringsAsFactors = FALSE)
@@ -463,6 +485,7 @@ load_raw_rgSet <- function() {
         row("PROBLEM_HISTORY_FILE", PROBLEM_HISTORY_FILE, "input", "phenotype_bridge"),
         row("IBD_FILE",        IBD_FILE,        "input",  "phenotype_bridge"),
         row("SAMPLE_SWAPS_FILE", SAMPLE_SWAPS_FILE, "input", "phenotype_bridge"),
+        row("SAMPLE_LIST_FILE", SAMPLE_LIST_FILE, "input",  "phenotype_bridge"),
         row("PHENOTYPE_FILE",  PHENOTYPE_FILE,  "output", "phenotype_bridge"),
         ## ADJUSTED_BETAS_FILE is optional: population.R skips the adjusted pass without it.
         row("PHENOTYPE_FILE",  PHENOTYPE_FILE,  "input",  "stage5"))

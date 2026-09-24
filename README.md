@@ -175,12 +175,18 @@ The phenotype build also
 
 - Sample-label corrections. `SAMPLE_SWAPS_FILE` (a CSV with `Incorrect Random ID`,
   `Correct Random ID` and `Notes` columns) lists sample-sheet labels found to be wrong.
-  A row whose two ids differ relabels that sample (a swap is two rows); a row whose correct
-  id is `99999` excludes the sample, since its person is unknown; a row whose two ids are equal
-  keeps the sample with `Identity_flag`, and its clocks are set to NA and marked
+  A row whose two ids differ relabels that sample (a swap is two rows); the corrected id can be
+  newly assigned, and reaches a person through the sample list like any other. A row whose two
+  ids are equal keeps the sample with `Identity_flag`, and its clocks are set to NA and marked
   `clock_excluded` (set `METHYL_EXCLUDE_IDENTITY_FLAGGED=FALSE` to keep them). The phenotype
   file keeps the sheet's original label in `Subject_ID_sheet`. Every listed id must appear on
-  the sample sheet exactly once. A cohort without corrections supplies the header only.
+  the sample sheet exactly once (wave 1 may be written `<id>_1` or `<id>`). A cohort without
+  corrections supplies the header only.
+- Pending ids. A sample-list row whose `nidaid` is empty or `NA` is a random_id whose person is
+  not yet confirmed. It is left out of the person table, and its samples are left out of the
+  phenotype file (each is named in the log) until the `nidaid` is filled in and the person
+  table is rebuilt (`./run_stage5_pipeline.sh --from person_table`). A random_id that is not in
+  the sample list at all still stops the build.
 - Sex checks. Mismatches between the admin file's self-report and the pedigree file are
   flagged in `results/reports/sex_qc.csv`. Stage 6 lists samples whose methylation sex (their
   position on the sex principal component) disagrees with their admin sex in

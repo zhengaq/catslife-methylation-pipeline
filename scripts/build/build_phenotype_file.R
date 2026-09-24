@@ -39,8 +39,7 @@ pwalk(filter(sheet, !is.na(identity_action)) %>% select(Subject_ID_sheet, Subjec
       function(Subject_ID_sheet, Subject_ID, identity_action)
           cat("build_phenotype_file: identity", identity_action, Subject_ID_sheet,
               if (identity_action == "relabel") paste("->", Subject_ID) else "", "\n"))
-excluded_subject_ids <- sheet$Subject_ID[sheet$identity_action %in% "exclude"]
-sheet <- filter(sheet, !identity_action %in% "exclude")
+excluded_subject_ids <- character()
 
 ## 2. DUPS: retain both aliquots, tag a shared DupGroupID ----
 ## Intentional technical replicates, kept so their consistency can be checked. Both
@@ -72,6 +71,17 @@ if (file.exists(PROBLEM_HISTORY_FILE)) {
 person <- read_sav(CLEAN_ID_FILE) %>%
     mutate(aid = as.integer(aid), random_id = as.integer(random_id)) %>%
     filter(!is.na(random_id))                       # only sampled persons carry a random_id
+
+## Samples whose random_id is in the sample list but has no confirmed nidaid yet ("pending",
+## e.g. a newly assigned id) have no person to join; leave them out, by name, until the sample
+## list is completed. Any other random_id that fails to resolve still stops the build below.
+sl_pending <- read_sample_list() %>% filter(is.na(nidaid)) %>% pull(random_id)
+sl_pending <- setdiff(sl_pending, person$random_id)
+pend <- subject_base_id(sheet$Subject_ID) %in% sl_pending
+walk(sheet$Subject_ID[pend], ~ cat("build_phenotype_file: excluding Subject_ID", .x,
+                                   "- its random_id has no confirmed nidaid in SAMPLE_LIST_FILE\n"))
+excluded_subject_ids <- c(excluded_subject_ids, sheet$Subject_ID[pend])
+sheet <- sheet[!pend, ]
 
 ## 4. IBD: flag cross-wave resamples and unexpected duplicates ----
 ## DUPLICATED=Yes & EXPECTED=No = a genetic duplicate not in DUPS_FILE. classify_ibd_pair()

@@ -12,9 +12,14 @@ admin <- read_sav(ADMIN_FILE)
 if (!"ZygGroup" %in% names(admin)) admin$ZygGroup <- NA_real_   # zygosity index (1=MZ); tolerate admins that lack it
 
 ## Sample list = the array<->person crosswalk; dedupe to one (nidaid, random_id) per person.
-sample_list <- read_excel(SAMPLE_LIST_FILE) %>%
-    transmute(nidaid = as.character(nidaid), random_id = as.integer(random_id)) %>%
-    distinct(nidaid, random_id)
+## A random_id with no confirmed nidaid ("pending") has no person yet and is left out here.
+sample_list <- read_sample_list() %>% distinct(nidaid, random_id)
+pending <- setdiff(sample_list$random_id[is.na(sample_list$nidaid)],
+                   sample_list$random_id[!is.na(sample_list$nidaid)])
+if (length(pending))
+    cat("build_person_table: random_id(s) without a confirmed nidaid, left out until the sample list",
+        "names them:", paste(pending, collapse = ", "), "\n")
+sample_list <- filter(sample_list, !is.na(nidaid))
 
 ## Every sampled nidaid must be present in the admin file.
 missing <- setdiff(sample_list$nidaid, as.character(admin$nidaid))
@@ -48,7 +53,7 @@ person <- admin %>%
         ZygGroup  = as.integer(ZygGroup)   # zygosity index (1=MZ); auto-classifies IBD duplicates
     ) %>%
     ## attach random_id (NA for un-sampled persons, who are kept so dyads see whole families)
-    left_join(sample_list, by = "nidaid", relationship = "many-to-one") %>%
+    left_join(sample_list, by = "nidaid", relationship = "many-to-one", na_matches = "never") %>%
     group_by(pfamid) %>%
     mutate(household_composition = case_when(
         all(adopted == 0, na.rm = TRUE) ~ "all_biological",

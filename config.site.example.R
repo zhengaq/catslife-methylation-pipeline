@@ -46,6 +46,5 @@ Sys.setenv(
 
 ## Notes:
 ##  - DYADS_FILE is written under DERIVED_DIR; no need to set it.
-##  - Sys.setenv here is visible to R only. For run_stage5_pipeline.sh / run_stage6_pipeline.sh
-##    to write logs under work/logs, also export it in your shell:
-##      export METHYL_LOGS_DIR=/scratch/you/catslife/work/logs
+##  - Use absolute paths: a relative path resolves against whichever directory R starts in.
+##  - Every name needs the METHYL_ prefix; config.R stops on a bare name or a <placeholder>.

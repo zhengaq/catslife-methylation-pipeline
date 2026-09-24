@@ -47,7 +47,7 @@ compute_clocks <- function(Betas, info2) {
   ## probes are ~100% missing from Betas; NA-fill that one clock rather than abort
   ## the whole pass.
   clock_tab <- function(key, mage, accel) {
-    a <- tryCatch(as.data.frame(methyAge(Betas, age_info = info2, clock = key)),
+    a <- tryCatch(as.data.frame(methyAge(Betas, age_info = info2, clock = key, do_plot = FALSE)),
                   error = function(e) {
                     warning("compute_clocks: ", key, " failed (likely ~0% probe coverage); ",
                             "filling ", mage, "/", accel, " with NA: ", conditionMessage(e))

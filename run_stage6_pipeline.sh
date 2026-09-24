@@ -4,11 +4,11 @@
 #   1. validity  stage6/validity_clocks.R   (clock-table validity/sensitivity; needs stage-5 mAge_clocks.csv)
 #   2. pca       stage6/pca_sex_batch.R      (sex-chromosome / batch-structure PCA; needs stage-1 betas + minfi)
 #
-# Checkpoint/resume: each check that finishes writes logs/.ckpt/<check>.done. A re-run skips any
+# Checkpoint/resume: each check that finishes writes LOGS_DIR/.ckpt/<check>.done. A re-run skips any
 # check whose marker exists, so after a failure you just launch again and it resumes at the failed
 # check. The checks are independent, so unlike the stage-5 pipeline a failed check is logged and
 # the next one still runs; only successful checks are checkpointed. Each check is streamed to the
-# console and to logs/stage6_pipeline_<check>.log; the run exits non-zero if any check failed.
+# console and to LOGS_DIR/stage6_pipeline_<check>.log; the run exits non-zero if any check failed.
 #
 # Input and output paths come from config.R / config.site.R; each check stops if an input is missing.
 #
@@ -43,7 +43,9 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-LOGDIR="${METHYL_LOGS_DIR:-logs}"   # export METHYL_LOGS_DIR=<work/logs> to keep logs out of the repo
+# Logs and checkpoints go to LOGS_DIR as config.R resolves it (site profile included).
+LOGDIR="$("$RSCRIPT" -e 'suppressMessages(source("config.R")); cat(LOGS_DIR)')" ||
+  { echo "could not resolve LOGS_DIR from config.R (see the error above)" >&2; exit 1; }
 CKPT="$LOGDIR/.ckpt"
 mkdir -p "$CKPT"
 
@@ -64,8 +66,9 @@ if [ "$STATUS" -eq 1 ]; then
   exit 0
 fi
 
-# --force clears every checkpoint; --from clears the named check and all later ones.
-if [ "$FORCE" -eq 1 ]; then rm -f "$CKPT"/*.done; fi
+# --force clears this script's checkpoints (stage 5 and stage 6 share the directory);
+# --from clears the named check and all later ones.
+if [ "$FORCE" -eq 1 ]; then for s in "${STEPS[@]}"; do rm -f "$CKPT/${s%%|*}.done"; done; fi
 if [ -n "$FROM" ]; then
   case " $(step_names) " in
     *" $FROM "*) : ;;

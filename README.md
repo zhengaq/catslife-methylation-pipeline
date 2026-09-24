@@ -157,7 +157,7 @@ The phenotype build also
    `random_id` does not resolve to a person.
 
    For long or failure-prone runs, `run_stage5_pipeline.sh` (the ID bridge + stage 5)
-   and `run_stage6_pipeline.sh` (stage 6) checkpoint each step to `logs/.ckpt/` and skip
+   and `run_stage6_pipeline.sh` (stage 6) checkpoint each step to `.ckpt/` under `METHYL_LOGS_DIR` and skip
    completed ones on re-run, so a failure resumes where it stopped
    (`--status` / `--from <step>` / `--force`; `--help` for detached usage).
 5. Set `METHYL_ARRAY_VERSION=v1` if the raw IDATs are legacy EPIC v1 arrays

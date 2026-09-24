@@ -11,7 +11,25 @@
 }
 .root <- .find_root()
 .site <- Sys.getenv("METHYL_SITE_CONFIG", file.path(.root, "config.site.R"))
-if (file.exists(.site)) { message("config: loading site profile ", .site); source(.site, local = TRUE) }
+if (file.exists(.site)) {
+    message("config: loading site profile ", .site)
+    .env0 <- Sys.getenv()
+    source(.site, local = TRUE)
+    .env1 <- Sys.getenv()
+    .set  <- names(.env1)[!names(.env1) %in% names(.env0) | .env1[names(.env1)] != .env0[names(.env1)]]
+    ## config.R reads only METHYL_-prefixed variables, so a bare name (CLEAN_ID_FILE) set by the
+    ## profile would be ignored and the default used instead.
+    .src   <- readLines(file.path(.root, "config.R"), warn = FALSE)
+    .known <- sub("^METHYL_", "", unique(unlist(regmatches(.src, gregexpr("METHYL_[A-Z0-9_]+", .src)))))
+    .bare  <- intersect(.set, .known)
+    if (length(.bare))
+        stop("config: ", .site, " sets ", paste(.bare, collapse = ", "), " without the METHYL_ prefix; ",
+             "rename to ", paste0("METHYL_", .bare, collapse = ", "), call. = FALSE)
+    .ph <- .set[grepl("<[^>]+>", .env1[.set])]
+    if (length(.ph))
+        stop("config: ", .site, " leaves a <placeholder> in ", paste(.ph, collapse = ", "), call. = FALSE)
+    rm(.env0, .env1, .set, .src, .known, .bare, .ph)
+}
 
 ## Run mode ----
 ## ARRAY_VERSION: "v2" (EPIC v2.0, default) or "v1" (legacy EPIC v1). Env: METHYL_ARRAY_VERSION=v1
@@ -41,10 +59,15 @@ ANALYSIS_DIR <- Sys.getenv("METHYL_ANALYSIS_DIR", file.path(PROJECT_DIR, "output
 DERIVED_DIR      <- Sys.getenv("METHYL_DERIVED_DIR",      ANALYSIS_DIR)
 INTERMEDIATE_DIR <- Sys.getenv("METHYL_INTERMEDIATE_DIR", ANALYSIS_DIR)
 RESULTS_DIR      <- Sys.getenv("METHYL_RESULTS_DIR",      ANALYSIS_DIR)
-LOGS_DIR         <- Sys.getenv("METHYL_LOGS_DIR",         ANALYSIS_DIR)  # run logs + checkpoints; see *_pipeline.sh
+LOGS_DIR         <- Sys.getenv("METHYL_LOGS_DIR",         file.path(ANALYSIS_DIR, "logs"))  # run logs + checkpoints
 REPORT_DIR       <- file.path(RESULTS_DIR, "reports")
 TABLES_DIR       <- file.path(RESULTS_DIR, "tables")
 SENS_DIR         <- file.path(RESULTS_DIR, "sensitivity")
+## Outputs must not land in the code checkout itself (a subdirectory such as output/ is fine).
+for (.d in c(ANALYSIS_DIR, DERIVED_DIR, INTERMEDIATE_DIR, RESULTS_DIR, LOGS_DIR))
+    if (normalizePath(.d, mustWork = FALSE) == normalizePath(PROJECT_DIR, mustWork = FALSE))
+        stop("config: an output directory resolves to the code checkout (", PROJECT_DIR, "); set ",
+             "METHYL_ANALYSIS_DIR or the METHYL_*_DIR sub-trees in the site profile", call. = FALSE)
 for (.d in c(DERIVED_DIR, INTERMEDIATE_DIR, REPORT_DIR, TABLES_DIR, SENS_DIR))
     dir.create(.d, recursive = TRUE, showWarnings = FALSE)
 
@@ -85,7 +108,7 @@ RESID_CPG_LIMIT <- as.integer(Sys.getenv("METHYL_RESID_CPG_LIMIT", "0"))
 ## Min fraction of a reference clock's CpGs that must be present in the beta matrix
 ## before trusting clock output (population.R::assert_clock_cpg_coverage).
 CLOCK_CPG_COVERAGE_MIN <- as.numeric(Sys.getenv("METHYL_CLOCK_CPG_COVERAGE_MIN", "0.90"))
-PHENOTYPE_FILE <- Sys.getenv("METHYL_PHENOTYPE_FILE", file.path(DATA_DIR, "PhenotypeFile.csv"))
+PHENOTYPE_FILE <- Sys.getenv("METHYL_PHENOTYPE_FILE", file.path(DERIVED_DIR, "PhenotypeFile.csv"))
 ## Stage 4's cell/plate-adjusted betas; read by stage5/population.R's adjusted clock pass.
 ADJUSTED_BETAS_FILE <- Sys.getenv("METHYL_ADJUSTED_BETAS_FILE",
                                   file.path(INTERMEDIATE_DIR, "B.adjusted.platebatches.txt"))
@@ -111,7 +134,7 @@ IBD_FILE             <- Sys.getenv("METHYL_IBD_FILE",             file.path(DATA
 ADMIN_FILE       <- Sys.getenv("METHYL_ADMIN_FILE",       file.path(DATA_DIR, "individual_admin.sav"))
 SAMPLE_LIST_FILE <- Sys.getenv("METHYL_SAMPLE_LIST_FILE", file.path(DATA_DIR, "sample_list.xlsx"))
 ## CLEAN_ID_FILE is written by build_person_table.R; DYADS_FILE by catslife_id_dyads.R.
-CLEAN_ID_FILE    <- Sys.getenv("METHYL_CLEAN_ID_FILE",    file.path(DATA_DIR, "CATSLife_pseudo_id.sav"))
+CLEAN_ID_FILE    <- Sys.getenv("METHYL_CLEAN_ID_FILE",    file.path(DERIVED_DIR, "catslife_person_table.sav"))
 DYADS_FILE       <- Sys.getenv("METHYL_DYADS_FILE",       file.path(DERIVED_DIR, "catslife_dyads.csv"))
 
 ## Vocabulary canonicalization ----

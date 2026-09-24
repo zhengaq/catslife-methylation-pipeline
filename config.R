@@ -207,15 +207,19 @@ SAMPLE_SWAPS_FILE <- Sys.getenv("METHYL_SAMPLE_SWAPS_FILE", file.path(DATA_DIR, 
 UNKNOWN_RANDOM_ID <- 99999L
 EXCLUDE_IDENTITY_FLAGGED <- !(toupper(Sys.getenv("METHYL_EXCLUDE_IDENTITY_FLAGGED", "TRUE")) %in% c("FALSE", "0", "NO"))
 
-## Read SAMPLE_SWAPS_FILE into data.frame(from, to, action, notes). Header names are
-## whitespace-trimmed; blank rows are ignored.
+## Labels in the sample sheet's form: wave 1 carries no suffix ("15821"), while the swap file
+## may write it as "15821_1". Wave 2 is "_2" in both.
+sheet_label <- function(x) sub("_1$", "", x)
+
+## Read SAMPLE_SWAPS_FILE into data.frame(from, to, action, notes), labels in sheet form.
+## Header names are whitespace-trimmed; blank rows are ignored.
 read_sample_swaps <- function(path = SAMPLE_SWAPS_FILE) {
     s <- read.csv(path, check.names = FALSE, colClasses = "character", na.strings = character(0))
     names(s) <- trimws(names(s))
     need <- c("Incorrect Random ID", "Correct Random ID")
     if (!all(need %in% names(s)))
         stop("read_sample_swaps: ", path, " needs columns ", paste0('"', need, '"', collapse = " and "))
-    from  <- trimws(s[["Incorrect Random ID"]]); to <- trimws(s[["Correct Random ID"]])
+    from  <- sheet_label(trimws(s[["Incorrect Random ID"]])); to <- sheet_label(trimws(s[["Correct Random ID"]]))
     notes <- if ("Notes" %in% names(s)) trimws(s[["Notes"]]) else rep("", length(from))
     keep  <- nzchar(from) | nzchar(to)
     from  <- from[keep]; to <- to[keep]; notes <- notes[keep]
@@ -236,15 +240,16 @@ read_sample_swaps <- function(path = SAMPLE_SWAPS_FILE) {
 ## must occur exactly once on the sheet. A duplicate-aliquot label ("<id>D") of a listed id
 ## stops the build, because the file does not say whether the aliquot needs the same correction.
 apply_sample_swaps <- function(sid, swaps) {
-    n <- vapply(swaps$from, function(f) sum(sid == f, na.rm = TRUE), integer(1))
+    key <- sheet_label(sid)
+    n <- vapply(swaps$from, function(f) sum(key == f, na.rm = TRUE), integer(1))
     if (any(n != 1))
         stop("apply_sample_swaps: listed id(s) not found exactly once on the sample sheet: ",
              paste0(swaps$from[n != 1], " (", n[n != 1], "x)", collapse = ", "))
-    aliquot <- sid[!sid %in% swaps$from & sub("_?D$", "", sid) %in% swaps$from]
+    aliquot <- sid[!key %in% swaps$from & sheet_label(sub("_?D$", "", sid)) %in% swaps$from]
     if (length(aliquot))
         stop("apply_sample_swaps: duplicate aliquot(s) of a listed id; list them in the swaps file too: ",
              paste(aliquot, collapse = ", "))
-    i      <- match(sid, swaps$from)
+    i      <- match(key, swaps$from)
     action <- swaps$action[i]
     out    <- ifelse(action %in% "relabel", swaps$to[i], sid)
     clash  <- intersect(out[duplicated(out)], swaps$to[swaps$action == "relabel"])

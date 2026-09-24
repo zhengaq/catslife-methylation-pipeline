@@ -49,7 +49,7 @@ map and confirm where each stage will read and write.
 | 3 | `3.methylation_adjust.chunked.R` | Estimate cell-type proportions (EpiDISH for blood, BeadSorted/`estimateLC` for saliva) -> residualize betas on cell proportions -> residualize on plate batch. Chunked via `--part`/`--nparts` for parallel (e.g. SLURM array) runs |
 | 4 | `4.methylation_merge.chunked.R` | Merge the per-chunk blood + saliva outputs -> `B.adjusted.platebatches.txt` |
 | 5 | `run_stage5.R` (sources `stage5/`) | 15 epigenetic clocks via `dnaMethyAge` (a primary pass on stage 1's unadjusted betas, plus a second comparison pass on stage 4's adjusted betas), then descriptive stats and clock-vs-age validation |
-| 6 | `run_stage6.R` (sources `stage6/`) | Sensitivity & validity checks on the stage 1-5 output: clock-vs-age validity recomputed one-per-person / one-per-family, DNAmTL identity, ID resolution + clock-NA propagation, and a sex-chromosome / batch-structure PCA |
+| 6 | `run_stage6.R` (sources `stage6/`) | Sensitivity & validity checks on the stage 1-5 output: clock-vs-age validity recomputed one-per-person / one-per-family, DNAmTL identity, ID resolution + clock-NA propagation, a sex-chromosome / batch-structure PCA, and the 15 x 15 clock-by-clock correlation (values and age acceleration) with its robustness to method, one-per-person / one-per-family sampling and wave |
 
 Stage 5 needs a person-level phenotype file (age, sex, family). Build it by
 running `scripts/build/build_person_table.R` (merges the individual-admin `.sav` with
@@ -59,9 +59,14 @@ the sample list into the person table `CLEAN_ID_FILE`), then
 
 Stage 6 runs after stage 5 and reads its `mAge_clocks.csv` (and stage 1's betas for the
 PCA check). The checks are independent: if one fails (for example because its input is
-missing), the other still runs. `stage6/validity_clocks.R` writes tables to
+missing), the others still run. `stage6/validity_clocks.R` writes tables to
 `results/sensitivity/`; `stage6/pca_sex_batch.R` writes `results/reports/PCA_sex_batch.pdf`
 and `pca_sex_batch_summary.csv` (each PC's variance and its ANOVA R² with sex and plate).
+`stage6/clock_intercorrelation.R` writes the 15 x 15 clock correlation matrices (clock values and
+age acceleration, full sample) and their robustness tables to `results/sensitivity/`
+(`clock_intercorrelation_*`), and heatmaps to `results/reports/clock_intercorrelation.pdf`.
+It compares Pearson with Spearman, one sample per person and per family, and each wave with the
+full sample; 95% CIs come from a bootstrap over families (`METHYL_INTERCOR_BOOT`, default 1000).
 
 ## The ID bridge (array IDs <-> person IDs)
 

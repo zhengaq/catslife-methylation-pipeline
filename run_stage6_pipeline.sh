@@ -3,6 +3,7 @@
 # run_stage6_pipeline.sh: run the stage-6 sensitivity & validity checks with checkpoint/resume:
 #   1. validity  stage6/validity_clocks.R   (clock-table validity/sensitivity; needs stage-5 mAge_clocks.csv)
 #   2. pca       stage6/pca_sex_batch.R      (sex-chromosome / batch-structure PCA; needs stage-1 betas + minfi)
+#   3. intercor  stage6/clock_intercorrelation.R (clock-by-clock correlation + robustness; needs stage-5 mAge_clocks.csv)
 #
 # Checkpoint/resume: each check that finishes writes LOGS_DIR/.ckpt/<check>.done. A re-run skips any
 # check whose marker exists, so after a failure you just launch again and it resumes at the failed
@@ -53,6 +54,7 @@ mkdir -p "$CKPT"
 STEPS=(
   "validity|stage6/validity_clocks.R"
   "pca|stage6/pca_sex_batch.R"
+  "intercor|stage6/clock_intercorrelation.R"
 )
 step_names() { local s; for s in "${STEPS[@]}"; do printf '%s ' "${s%%|*}"; done; }
 ts() { date '+%Y-%m-%d %H:%M:%S'; }

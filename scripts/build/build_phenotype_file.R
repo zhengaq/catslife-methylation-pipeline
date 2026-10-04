@@ -59,9 +59,16 @@ if (file.exists(PROBLEM_HISTORY_FILE)) {
     flagged <- read_excel(PROBLEM_HISTORY_FILE) %>%
         filter(tolower(trimws(`Does a problem remain at release?`)) %in% c("yes", "y"))
     if (nrow(flagged)) {
-        pwalk(list(flagged[["Subject ID"]], flagged[["Problem Description"]]),
-              ~ cat("build_phenotype_file: excluding Subject_ID", .x, "-", .y, "\n"))
-        drop <- sheet$Subject_ID_sheet %in% flagged[["Subject ID"]]
+        hit  <- sheet$Subject_ID_sheet %in% flagged[["Subject ID"]]
+        desc <- flagged[["Problem Description"]][match(sheet$Subject_ID_sheet, flagged[["Subject ID"]])]
+        ## A relabeled sample's problem is its label (the vendor reports a swap as a sex
+        ## problem); SAMPLE_SWAPS_FILE resolves it, so the sample is kept.
+        kept <- hit & sheet$identity_action %in% "relabel"
+        drop <- hit & !kept
+        walk(which(kept), ~ cat("build_phenotype_file: keeping Subject_ID", sheet$Subject_ID_sheet[.x], "-",
+                                desc[.x], "- resolved by relabel to", sheet$Subject_ID[.x], "\n"))
+        walk(which(drop), ~ cat("build_phenotype_file: excluding Subject_ID", sheet$Subject_ID_sheet[.x], "-",
+                                desc[.x], "\n"))
         excluded_subject_ids <- c(excluded_subject_ids, sheet$Subject_ID[drop])
         sheet <- sheet[!drop, ]
     }

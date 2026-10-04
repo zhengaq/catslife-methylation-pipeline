@@ -176,6 +176,22 @@ The phenotype build also
   against GenomeStudio's own `Methylation_Profile.txt` for a probe/sample
   spot-check. It is not part of the normal run.
 
+## Extracts for collaborators
+
+The scripts in `scripts/extract/` are not part of the pipeline: no stage runs them, and they
+change none of its outputs. Each reads the outputs of a completed run and writes a subset for
+a collaborator's request.
+
+- `scripts/extract/blood_index.R` - for a list of Buffy Coat lab IDs (`SampleLog` on
+  `SAMPLE_LIST_FILE`, in a one-column file headed `lab ID`), finds each person's arrays in
+  both waves and extracts their cell-type proportions. Arrays are matched on the corrected
+  `Subject_ID`, so a swapped array goes to the person whose DNA it holds. Writes
+  `blood_index.csv` (one row per person, wave and array, with `wave_coverage` and a `status`
+  that notes swaps, identity flags, duplicate aliquots, or why a row has no array) and
+  `cell_proportions.blood_subset.csv`. Reads `PHENOTYPE_FILE` and `CELL_PROPORTIONS_FILE`.
+  `Rscript scripts/extract/blood_index.R <lab-ID file> [out dir]` (default out dir: the
+  lab-ID file's directory).
+
 ## Additional notes
 
 - Sample-label corrections. `SAMPLE_SWAPS_FILE` (a CSV with `Incorrect Random ID`,
@@ -185,8 +201,10 @@ The phenotype build also
   ids are equal keeps the sample with `Identity_flag`, and its clocks are set to NA and marked
   `clock_excluded` (set `METHYL_EXCLUDE_IDENTITY_FLAGGED=FALSE` to keep them). The phenotype
   file keeps the sheet's original label in `Subject_ID_sheet`. Every listed id must appear on
-  the sample sheet exactly once (wave 1 may be written `<id>_1` or `<id>`). A cohort without
-  corrections supplies the header only.
+  the sample sheet exactly once (wave 1 may be written `<id>_1` or `<id>`). A relabeled sample
+  is kept even when `PROBLEM_HISTORY_FILE` lists its sheet label, since the vendor reports a
+  swap as a sample problem; the log names each one. A cohort without corrections supplies the
+  header only.
 - Pending ids. A sample-list row whose `nidaid` is empty or `NA` is a random_id whose person is
   not yet confirmed. It is left out of the person table, and its samples are left out of the
   phenotype file (each is named in the log) until the `nidaid` is filled in and the person

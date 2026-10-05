@@ -3,9 +3,7 @@
 # run_stage6_pipeline.sh: run the stage-6 sensitivity & validity checks with checkpoint/resume:
 #   1. validity  stage6/validity_clocks.R   (clock-table validity/sensitivity; needs stage-5 mAge_clocks.csv)
 #   2. pca       stage6/pca_sex_batch.R      (sex-chromosome / batch-structure PCA; needs stage-1 betas + minfi)
-#   3. sexint    stage6/sex_intensity.R      (sex call from the raw chrX/chrY intensities; reads the IDATs in batches)
-#   4. verdicts  stage6/sex_verdicts.R       (per-array sex/identity verdicts; needs checks 2 and 3)
-#   5. intercor  stage6/clock_intercorrelation.R (clock-by-clock correlation + robustness; needs stage-5 mAge_clocks.csv)
+#   3. intercor  stage6/clock_intercorrelation.R (clock-by-clock correlation + robustness; needs stage-5 mAge_clocks.csv)
 #
 # Checkpoint/resume: each check that finishes writes LOGS_DIR/.ckpt/<check>.done. A re-run skips any
 # check whose marker exists, so after a failure you just launch again and it resumes at the failed
@@ -26,7 +24,7 @@ checkpoint/resume and logging.
 
   ./run_stage6_pipeline.sh            run/resume: skip completed checks, run the rest
   ./run_stage6_pipeline.sh --status   show done/pending per check, then exit
-  ./run_stage6_pipeline.sh --from C   redo from check C (validity|pca|sexint|verdicts|intercor)
+  ./run_stage6_pipeline.sh --from C   redo from check C (validity|pca|intercor)
   ./run_stage6_pipeline.sh --force    ignore all checkpoints, redo everything
 
 Detached (the PCA check loads the full beta matrix), logging to a file, surviving logout:
@@ -56,8 +54,6 @@ mkdir -p "$CKPT"
 STEPS=(
   "validity|stage6/validity_clocks.R"
   "pca|stage6/pca_sex_batch.R"
-  "sexint|stage6/sex_intensity.R"
-  "verdicts|stage6/sex_verdicts.R"
   "intercor|stage6/clock_intercorrelation.R"
 )
 step_names() { local s; for s in "${STEPS[@]}"; do printf '%s ' "${s%%|*}"; done; }

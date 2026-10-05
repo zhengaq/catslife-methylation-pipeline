@@ -455,21 +455,15 @@ load_raw_rgSet <- function() {
     minfi::read.metharray.exp(targets = load_targets(), force = TRUE)
 }
 
-## Raw RGChannelSet for a subset of the sample sheet's rows (a load_targets() slice), so a
-## whole-cohort pass over the raw intensities can read the IDATs batch by batch.
-read_rgSet_batch <- function(targets) {
-    minfi::read.metharray.exp(targets = targets, force = TRUE)
-}
-
 ## Stage 6 sex checks ----
 ## SEX_AMBIG_P: a sample whose posterior probability of being male on the sex principal
 ## component lies strictly between this and 1 - this is "ambiguous".
 ## SEX_ATYPICAL_Z: a sample more than this many robust SDs (MAD) from the centre of its called
-## sex, on the sex PC or on an intensity measure, is "atypical" (mixed DNA, sex-chromosome
-## anomaly, or a failed array). SEX_INT_CHUNK: samples per IDAT batch in sex_intensity.R.
+## sex on the sex PC is "atypical" (mixed DNA, sex-chromosome anomaly, or a failed array); a
+## person whose arrays differ in sex-PC position by more than this many robust SDs of the
+## within-person differences has an atypical change between arrays.
 SEX_AMBIG_P    <- 0.01
 SEX_ATYPICAL_Z <- 5
-SEX_INT_CHUNK  <- as.integer(Sys.getenv("METHYL_SEX_INT_CHUNK", "200"))
 
 ## Path bridge: see + validate the logical -> physical mapping ----
 ## Registry of the logical paths, each tagged role (input/output/root) and the

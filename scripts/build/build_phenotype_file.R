@@ -146,16 +146,22 @@ if (length(bad_sex))
 ## 7. Sex QC: genotype vs admin (primary) vs pedigree ----
 ## nsex is the primary source; Sex_geno is reserved for a genotype-based call and is NA
 ## for now. Disagreements are flagged, not dropped, and written to sex_qc.csv together
-## with the sheet's SIF_Sex as a further cross-check.
+## with the sheet's SIF_Sex as a further cross-check. Sex_admin_sheet is the admin sex of
+## the person the uncorrected sheet label names, so a sex check can be scored against the
+## labels before and after SAMPLE_SWAPS_FILE.
+sheet_rid <- subject_base_id(bridge$Subject_ID_sheet)
 bridge <- bridge %>% mutate(
     Sex       = case_when(nsex == 1 ~ "M", nsex == 0 ~ "F", TRUE ~ NA_character_),
+    Sex_admin_sheet = case_when(person$nsex[match(sheet_rid, person$random_id)] == 1 ~ "M",
+                                person$nsex[match(sheet_rid, person$random_id)] == 0 ~ "F",
+                                TRUE ~ NA_character_),
     Sex_ped   = case_when(Sex_ped_num == 1 ~ "M", Sex_ped_num == 2 ~ "F", TRUE ~ NA_character_),
     Sex_geno  = NA_character_,
     Sex_sheet = if_else(SIF_Sex %in% c("M", "F"), SIF_Sex, NA_character_),
     Sex_flag  = disagree(Sex, Sex_ped) | disagree(Sex, Sex_geno))
 bridge %>%
-    transmute(Sample = Sample_Group, Subject_ID, IndividualID,
-              Sex_admin = Sex, Sex_ped, Sex_geno, Sex_sheet, Sex_flag) %>%
+    transmute(Sample = Sample_Group, Subject_ID, Subject_ID_sheet, identity_action, IndividualID,
+              Sex_admin = Sex, Sex_admin_sheet, Sex_ped, Sex_geno, Sex_sheet, Sex_flag) %>%
     write_csv(file.path(REPORT_DIR, "sex_qc.csv"))
 cat("build_phenotype_file: sex QC -", sum(bridge$Sex_flag, na.rm = TRUE),
     "sample(s) with an admin-vs-pedigree/genotype disagreement (flagged, not dropped); wrote sex_qc.csv\n")

@@ -4,7 +4,11 @@
 ### others still run.
 ###   - validity_clocks.R : clock-vs-age validity under non-independence, DNAmTL identity,
 ###                         ID resolution, clock-NA propagation (needs stage-5 mAge_clocks.csv)
-###   - pca_sex_batch.R   : sex-chromosome / batch structure PCA (needs stage-1 betas + minfi)
+###   - pca_sex_batch.R   : sex-chromosome / batch structure PCA and the label-free PCA sex call,
+###                         scored against the sheet labels and the corrected labels (needs stage-1
+###                         betas + sex_qc.csv + minfi)
+###   - sex_intensity.R   : sex call from the raw chrX/chrY intensities (needs the IDATs + minfi)
+###   - sex_verdicts.R    : per-array verdicts combining both sex calls with SAMPLE_SWAPS_FILE
 ###   - clock_intercorrelation.R : 15 x 15 clock-by-clock correlation (values and age acceleration)
 ###                         and its robustness to method, non-independence and wave (needs mAge_clocks.csv)
 source("config.R")
@@ -18,5 +22,7 @@ run_check <- function(name, path) {
 
 run_check("clock validity/sensitivity", "stage6/validity_clocks.R")
 run_check("sex-chromosome / batch PCA", "stage6/pca_sex_batch.R")
+run_check("intensity sex call", "stage6/sex_intensity.R")
+run_check("sex identity verdicts", "stage6/sex_verdicts.R")
 run_check("clock inter-correlation", "stage6/clock_intercorrelation.R")
 cat("\nrun_stage6 complete\n")

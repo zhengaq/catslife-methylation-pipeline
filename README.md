@@ -49,7 +49,7 @@ map and confirm where each stage will read and write.
 | 3 | `3.methylation_adjust.chunked.R` | Estimate cell-type proportions (EpiDISH for blood, BeadSorted/`estimateLC` for saliva) -> residualize betas on cell proportions -> residualize on plate batch. Chunked via `--part`/`--nparts` for parallel (e.g. SLURM array) runs |
 | 4 | `4.methylation_merge.chunked.R` | Merge the per-chunk blood + saliva outputs -> `B.adjusted.platebatches.txt` |
 | 5 | `run_stage5.R` (sources `stage5/`) | 15 epigenetic clocks via `dnaMethyAge` (a primary pass on stage 1's unadjusted betas, plus a second comparison pass on stage 4's adjusted betas), then descriptive stats and clock-vs-age validation |
-| 6 | `run_stage6.R` (sources `stage6/`) | Sensitivity & validity checks on the stage 1-5 output: clock-vs-age validity recomputed one-per-person / one-per-family, DNAmTL identity, ID resolution + clock-NA propagation, a sex-chromosome / batch-structure PCA, and the 15 x 15 clock-by-clock correlation (values and age acceleration) with its robustness to method, one-per-person / one-per-family sampling and wave |
+| 6 | `run_stage6.R` (sources `stage6/`) | Sensitivity & validity checks on the stage 1-5 output: clock-vs-age validity recomputed one-per-person / one-per-family, DNAmTL identity, ID resolution + clock-NA propagation, a sex-chromosome / batch-structure PCA, two independent sex calls (methylation PCA and raw X/Y intensities) with per-array identity verdicts, and the 15 x 15 clock-by-clock correlation (values and age acceleration) with its robustness to method, one-per-person / one-per-family sampling and wave |
 
 Stage 5 needs a person-level phenotype file (age, sex, family). Build it by
 running `scripts/build/build_person_table.R` (merges the individual-admin `.sav` with
@@ -61,7 +61,10 @@ Stage 6 runs after stage 5 and reads its `mAge_clocks.csv` (and stage 1's betas 
 PCA check). The checks are independent: if one fails (for example because its input is
 missing), the others still run. `stage6/validity_clocks.R` writes tables to
 `results/sensitivity/`; `stage6/pca_sex_batch.R` writes `results/reports/PCA_sex_batch.pdf`
-and `pca_sex_batch_summary.csv` (each PC's variance and its ANOVA R² with sex and plate).
+and `pca_sex_batch_summary.csv` (each PC's variance and its ANOVA R² with sex and plate), and the
+PCA sex call (below). `stage6/sex_intensity.R` calls sex a second, independent way, from the raw
+chrX/chrY intensities, reading the IDATs in batches of `METHYL_SEX_INT_CHUNK` (default 200), and
+`stage6/sex_verdicts.R` combines both calls (below).
 `stage6/clock_intercorrelation.R` writes the 15 x 15 clock correlation matrices (clock values and
 age acceleration, full sample) and their robustness tables to `results/sensitivity/`
 (`clock_intercorrelation_*`), and heatmaps to `results/reports/clock_intercorrelation.pdf`.
@@ -211,9 +214,21 @@ a collaborator's request.
   table is rebuilt (`./run_stage5_pipeline.sh --from person_table`). A random_id that is not in
   the sample list at all still stops the build.
 - Sex checks. Mismatches between the admin file's self-report and the pedigree file are
-  flagged in `results/reports/sex_qc.csv`. Stage 6 lists samples whose methylation sex (their
-  position on the sex principal component) disagrees with their admin sex in
-  `results/reports/pca_sex_mismatch.csv`; a sample there is a likely label swap.
+  flagged in `results/reports/sex_qc.csv`, which also records each sample's sheet label and
+  the admin sex of the person it names (`Subject_ID_sheet`, `Sex_admin_sheet`). Stage 6 calls
+  each array's sex two independent ways. The PCA call is a two-group mixture on the sex principal
+  component, fitted without labels (`pca_sex_scores.csv`); a sample is ambiguous when its
+  probability of being male is between 0.01 and 0.99, and atypical when it lies more than 5
+  robust SDs from its cluster's centre (`SEX_AMBIG_P`, `SEX_ATYPICAL_Z` in `config.R`). The same
+  call is scored against the sheet labels and the corrected labels (`pca_sex_prepost.csv`,
+  `pca_sex_confusion.csv`), and the check stops if a cross-sex relabel in `SAMPLE_SWAPS_FILE` is
+  not a mismatch under its sheet label or is still one under its corrected label.
+  `pca_sex_mismatch.csv` lists the arrays whose PCA sex differs from their admin sex. The
+  intensity call (`sex_intensity.csv`) uses minfi's `getSex()` rule and classes each array's X and
+  Y copy number and X inactivation as XX, XY, XXY-like, X0-like or atypical. `sex_identity_verdicts.csv`
+  gives one verdict per swap-file row and per flagged array (for example a likely mix-up when
+  another array of the same person reads the admin sex), and `sex_identity_memo.md` summarizes
+  them for the lab. A swap between two people of the same sex is invisible to both calls.
 - Age is the admin file's `LabAge` (wave 2) or `LabAge1` (wave 1), assigned by the
   sample's `Wave` (the sheet's `_2` suffix). Samples with no age for their wave
   resolve normally but have no age-acceleration value.

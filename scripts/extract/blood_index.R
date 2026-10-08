@@ -11,7 +11,8 @@
 ### Usage: Rscript scripts/extract/blood_index.R <lab-ID file> [out dir]
 ###   <lab-ID file>  one column headed "lab ID"
 ###   [out dir]      default: the lab-ID file's directory
-### Writes blood_index.csv and cell_proportions.blood_subset.csv.
+### Writes blood_index.csv and cell_proportions.blood_subset.csv; the subset identifies each person
+### by the sample list's random_id.
 source("config.R")
 suppressMessages({ library(dplyr); library(readr); library(readxl) })
 
@@ -103,7 +104,8 @@ out <- rows %>%
 sub <- out %>%
     filter(!is.na(Sample_Group)) %>%
     inner_join(select(cells, Sample_Group, all_of(CELL_TYPES)), by = "Sample_Group") %>%
-    select(nidaid, `lab ID`, wave, Sample_Group, wave_coverage, status, all_of(CELL_TYPES))
+    arrange(random_id, wave, Sample_Group) %>%
+    select(random_id, `lab ID`, wave, Sample_Group, wave_coverage, status, all_of(CELL_TYPES))
 
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 write_csv(out, file.path(out_dir, "blood_index.csv"), na = "")

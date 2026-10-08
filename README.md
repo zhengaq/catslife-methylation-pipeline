@@ -189,7 +189,9 @@ a collaborator's request.
   `Subject_ID`, so a swapped array goes to the person whose DNA it holds. Writes
   `blood_index.csv` (one row per person, wave and array, with `wave_coverage` and a `status`
   that notes swaps, identity flags, duplicate aliquots, or why a row has no array) and
-  `cell_proportions.blood_subset.csv`. Reads `PHENOTYPE_FILE` and `CELL_PROPORTIONS_FILE`.
+  `cell_proportions.blood_subset.csv` (one row per bridged array, with the person's
+  `random_id` from `SAMPLE_LIST_FILE` as the identifier). Reads `PHENOTYPE_FILE` and
+  `CELL_PROPORTIONS_FILE`.
   `Rscript scripts/extract/blood_index.R <lab-ID file> [out dir]` (default out dir: the
   lab-ID file's directory).
 

@@ -455,15 +455,14 @@ load_raw_rgSet <- function() {
     minfi::read.metharray.exp(targets = load_targets(), force = TRUE)
 }
 
-## Stage 6 sex checks ----
-## SEX_AMBIG_P: a sample whose posterior probability of being male on the sex principal
-## component lies strictly between this and 1 - this is "ambiguous".
-## SEX_ATYPICAL_Z: a sample more than this many robust SDs (MAD) from the centre of its called
-## sex on the sex PC is "atypical" (mixed DNA, sex-chromosome anomaly, or a failed array); a
-## person whose arrays differ in sex-PC position by more than this many robust SDs of the
-## within-person differences has an atypical change between arrays.
-SEX_AMBIG_P    <- 0.01
-SEX_ATYPICAL_Z <- 5
+## Stage 6 sample-swap check ----
+## SWAP_AGE_CLOCKS: the chronological-age clocks whose consensus tests each SAMPLE_SWAPS_FILE
+## relabel. PCGrimAge is left out because it takes age and sex as inputs, and the pace, mitotic,
+## telomere, mortality, pediatric and pan-mammalian clocks because they do not estimate adult age.
+## SWAP_AGE_Z: an age label fits an array when the consensus clock age lies within this many
+## robust SDs (MAD) of the calibration error from that label's age.
+SWAP_AGE_CLOCKS <- c("Horvath_mAge", "Hannum_mAge", "Horvath2_mAge", "ZhangQ_mAge", "PhenoAge_mAge")
+SWAP_AGE_Z      <- 3
 
 ## Path bridge: see + validate the logical -> physical mapping ----
 ## Registry of the logical paths, each tagged role (input/output/root) and the

@@ -2,7 +2,8 @@
 #
 # run_stage6_pipeline.sh: run the stage-6 sensitivity & validity checks with checkpoint/resume:
 #   1. validity  stage6/validity_clocks.R   (clock-table validity/sensitivity; needs stage-5 mAge_clocks.csv)
-#   2. pca       stage6/pca_sex_batch.R      (sex-chromosome / batch-structure PCA; needs stage-1 betas + minfi)
+#   2. swaps     stage6/sample_swaps_check.R (SAMPLE_SWAPS_FILE audit + clock-age evidence; needs mAge_clocks.csv,
+#                the phenotype file and the person table)
 #   3. intercor  stage6/clock_intercorrelation.R (clock-by-clock correlation + robustness; needs stage-5 mAge_clocks.csv)
 #
 # Checkpoint/resume: each check that finishes writes LOGS_DIR/.ckpt/<check>.done. A re-run skips any
@@ -24,10 +25,10 @@ checkpoint/resume and logging.
 
   ./run_stage6_pipeline.sh            run/resume: skip completed checks, run the rest
   ./run_stage6_pipeline.sh --status   show done/pending per check, then exit
-  ./run_stage6_pipeline.sh --from C   redo from check C (validity|pca|intercor)
+  ./run_stage6_pipeline.sh --from C   redo from check C (validity|swaps|intercor)
   ./run_stage6_pipeline.sh --force    ignore all checkpoints, redo everything
 
-Detached (the PCA check loads the full beta matrix), logging to a file, surviving logout:
+Detached, logging to a file, surviving logout:
   setsid nohup ./run_stage6_pipeline.sh > stage6_pipeline.log 2>&1 < /dev/null &
 USAGE
 }
@@ -53,7 +54,7 @@ mkdir -p "$CKPT"
 # ordered checks: "name|Rscript path"
 STEPS=(
   "validity|stage6/validity_clocks.R"
-  "pca|stage6/pca_sex_batch.R"
+  "swaps|stage6/sample_swaps_check.R"
   "intercor|stage6/clock_intercorrelation.R"
 )
 step_names() { local s; for s in "${STEPS[@]}"; do printf '%s ' "${s%%|*}"; done; }
